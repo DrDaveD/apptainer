@@ -29,7 +29,7 @@ func TestAddRemoveKeyserver(t *testing.T) {
 	token := "test"
 
 	scsDefaultCredential := &credential.Config{
-		URI:  SCSDefaultKeyserverURI,
+		URI:  testKeyserverURI,
 		Auth: credential.TokenPrefix + token,
 	}
 
@@ -50,7 +50,7 @@ func TestAddRemoveKeyserver(t *testing.T) {
 			wantErr:   false,
 			wantKeyservers: []*ServiceConfig{
 				{
-					URI:        SCSDefaultKeyserverURI,
+					URI:        testKeyserverURI,
 					credential: scsDefaultCredential,
 				},
 				{
@@ -85,7 +85,7 @@ func TestAddRemoveKeyserver(t *testing.T) {
 					External: true,
 				},
 				{
-					URI:        SCSDefaultKeyserverURI,
+					URI:        testKeyserverURI,
 					credential: scsDefaultCredential,
 				},
 				{
@@ -108,7 +108,7 @@ func TestAddRemoveKeyserver(t *testing.T) {
 			wantErr:   false,
 			wantKeyservers: []*ServiceConfig{
 				{
-					URI:        SCSDefaultKeyserverURI,
+					URI:        testKeyserverURI,
 					credential: scsDefaultCredential,
 				},
 				{
@@ -119,13 +119,13 @@ func TestAddRemoveKeyserver(t *testing.T) {
 			},
 		},
 		{
-			name:      "Remove " + SCSDefaultKeyserverURI,
+			name:      "Remove " + testKeyserverURI,
 			operation: remove,
-			uri:       SCSDefaultKeyserverURI,
+			uri:       testKeyserverURI,
 			wantErr:   false,
 			wantKeyservers: []*ServiceConfig{
 				{
-					URI:        SCSDefaultKeyserverURI,
+					URI:        testKeyserverURI,
 					Skip:       true,
 					credential: scsDefaultCredential,
 				},
@@ -143,9 +143,9 @@ func TestAddRemoveKeyserver(t *testing.T) {
 			wantErr:   true,
 		},
 		{
-			name:      "Add " + SCSDefaultKeyserverURI + " as secondary",
+			name:      "Add " + testKeyserverURI + " as secondary",
 			operation: add,
-			uri:       SCSDefaultKeyserverURI,
+			uri:       testKeyserverURI,
 			order:     2,
 			wantErr:   false,
 			wantKeyservers: []*ServiceConfig{
@@ -155,7 +155,7 @@ func TestAddRemoveKeyserver(t *testing.T) {
 					Insecure: true,
 				},
 				{
-					URI:        SCSDefaultKeyserverURI,
+					URI:        testKeyserverURI,
 					credential: scsDefaultCredential,
 				},
 			},
@@ -163,7 +163,7 @@ func TestAddRemoveKeyserver(t *testing.T) {
 	}
 
 	ep := &Config{
-		URI:   SCSDefaultCloudURI,
+		URI:   testCloudURI,
 		Token: token,
 	}
 
