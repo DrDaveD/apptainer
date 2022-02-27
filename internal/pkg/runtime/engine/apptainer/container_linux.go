@@ -753,29 +753,41 @@ func (c *container) mountImage(mnt *mount.Point) error {
 		return imageDriver.Mount(params, c.rpcOps.Mount)
 	}
 
-	attachFlag := os.O_RDWR
-	loopFlags := uint32(loop.FlagsAutoClear)
+	var path string
+	if c.userNS && mountType == "squashfs" {
+		mountType = "squashfuse"
+		path = mnt.Source
+		// add squashfuse offset option
+		if optsString != "" {
+			optsString += ","
+		}
+		optsString += "offset="+strconv.FormatUint(offset, 10)
+	} else {
+		// allocate a loop device
+		attachFlag := os.O_RDWR
+		loopFlags := uint32(loop.FlagsAutoClear)
 
-	if flags&syscall.MS_RDONLY == 1 {
-		loopFlags |= loop.FlagsReadOnly
-		attachFlag = os.O_RDONLY
+		if flags&syscall.MS_RDONLY == 1 {
+			loopFlags |= loop.FlagsReadOnly
+			attachFlag = os.O_RDONLY
+		}
+
+		info := &loop.Info64{
+			Offset:    offset,
+			SizeLimit: sizelimit,
+			Flags:     loopFlags,
+		}
+
+		shared := c.engine.EngineConfig.File.SharedLoopDevices
+		number, err := c.rpcOps.LoopDevice(mnt.Source, attachFlag, *info, maxDevices, shared)
+		if err != nil {
+			return fmt.Errorf("failed to find loop device: %s", err)
+		}
+
+		path = fmt.Sprintf("/dev/loop%d", number)
+
+		sylog.Debugf("Mounting loop device %s to %s of type %s\n", path, mnt.Destination, mnt.Type)
 	}
-
-	info := &loop.Info64{
-		Offset:    offset,
-		SizeLimit: sizelimit,
-		Flags:     loopFlags,
-	}
-
-	shared := c.engine.EngineConfig.File.SharedLoopDevices
-	number, err := c.rpcOps.LoopDevice(mnt.Source, attachFlag, *info, maxDevices, shared)
-	if err != nil {
-		return fmt.Errorf("failed to find loop device: %s", err)
-	}
-
-	path := fmt.Sprintf("/dev/loop%d", number)
-
-	sylog.Debugf("Mounting loop device %s to %s of type %s\n", path, mnt.Destination, mnt.Type)
 
 	if mountType == "encryptfs" {
 		// pass the master processus ID only if a container IPC

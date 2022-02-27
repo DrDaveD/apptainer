@@ -10,9 +10,12 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -68,10 +71,65 @@ func (t *Methods) Mount(arguments *args.MountArgs, mountErr *error) (err error) 
 			defer func() {
 				_, err = capabilities.SetProcessEffective(oldEffective)
 			}()
+		} else if arguments.Filesystem == "squashfuse" {
+			// this is running in an unprivileged user namespace
+
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
+			// first raise the effective capabilities
+			oldEffective, err := capabilities.SetProcessEffective(defaultEffective)
+			if err != nil {
+				*mountErr = fmt.Errorf("failure setting increased capabilities: %v", err)
+				return
+			}
+			defer func() {
+				_, _ = capabilities.SetProcessEffective(oldEffective)
+			}()
+
+			// then set the user id to root which is what fuse
+			//   looks for to avoid calling fusermount
+			oldUid := syscall.Getuid()
+			err = syscall.Setuid(0)
+			if err != nil {
+				*mountErr = fmt.Errorf("failure setting uid to 0: %v", err)
+				return
+			}
+			defer func() {
+				_ = syscall.Setuid(oldUid)
+			}()
+
+			if path.Dir(arguments.Source) == "/proc/self/fd" {
+				// Keep the file descriptor open across fork
+				fd, _ := strconv.Atoi(path.Base(arguments.Source))
+				fdflags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+				if err != nil {
+					*mountErr = fmt.Errorf("failure getting fdflags on %v: %v", arguments.Source, err)
+					return
+				}
+				_, err = unix.FcntlInt(uintptr(fd), unix.F_SETFD, fdflags & ^unix.FD_CLOEXEC)
+				if err != nil {
+					*mountErr = fmt.Errorf("failure clearing CLOEXEC on %v: %v", arguments.Source, err)
+					return
+				}
+				defer func() {
+					_, _ = unix.FcntlInt(uintptr(fd), unix.F_SETFD, fdflags)
+				}()
+			}
+
+			// now run squashfuse
+			cmd := exec.Command("/usr/bin/squashfuse", "-o", arguments.Data, arguments.Source, arguments.Target)
+			sylog.Debugf("Executing %v", cmd.String())
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			if err = cmd.Run(); err != nil {
+				*mountErr = fmt.Errorf("squashfuse failed: %v: %v", err, stderr.String())
+			}
+			return
 		}
 		*mountErr = syscall.Mount(arguments.Source, arguments.Target, arguments.Filesystem, arguments.Mountflags, arguments.Data)
 	})
-	return
+	return *mountErr
 }
 
 // Decrypt decrypts the loop device.

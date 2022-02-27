@@ -633,7 +633,8 @@ func execStarter(cobraCmd *cobra.Command, image string, args []string, name stri
 	// namespace or if we are currently running inside a
 	// user namespace
 	if (UserNamespace || insideUserNs) && fs.IsFile(image) {
-		convert := true
+		// convert := true
+		convert := false
 
 		if engineConfig.File.ImageDriver != "" {
 			// load image driver plugins
