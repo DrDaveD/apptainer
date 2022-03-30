@@ -74,7 +74,7 @@ func getDownloadConfig() (libClient.Downloader, error) {
 	// get downloader parameters from config
 	conf := apptainerconf.GetCurrentConfig()
 	if conf == nil {
-		// sylog.Fatalf("Unable to get apptainer configuration")
+		sylog.Warningf("loading configuration where it should be only done in testing")
 		var err error
 		conf, err = apptainerconf.Parse(buildcfg.APPTAINER_CONF_FILE)
 		if err != nil {

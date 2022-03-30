@@ -90,6 +90,7 @@ func (e *EngineOperations) PrepareConfig(starterConfig *starter.Config) error {
 	if err != nil {
 		return fmt.Errorf("unable to parse apptainer.conf file: %s", err)
 	}
+	apptainerconf.SetCurrentConfig(e.EngineConfig.File)
 
 	if !e.EngineConfig.File.AllowSetuid && starterConfig.GetIsSUID() {
 		return fmt.Errorf("suid workflow disabled by administrator")
@@ -109,6 +110,9 @@ func (e *EngineOperations) PrepareConfig(starterConfig *starter.Config) error {
 			return fmt.Errorf("%s must be owned by root", buildcfg.ECL_FILE)
 		}
 	}
+
+	// Tell apptainerconf the binary path
+	apptainerconf.SetBinaryPath(e.EngineConfig.GetBinaryPath(), false)
 
 	// Save the current working directory if not set
 	if e.EngineConfig.GetCwd() == "" {

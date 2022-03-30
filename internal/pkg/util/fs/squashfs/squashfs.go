@@ -14,6 +14,7 @@ import (
 
 	"github.com/apptainer/apptainer/internal/pkg/buildcfg"
 	"github.com/apptainer/apptainer/internal/pkg/util/bin"
+	"github.com/apptainer/apptainer/pkg/sylog"
 	"github.com/apptainer/apptainer/pkg/util/apptainerconf"
 )
 
@@ -22,8 +23,8 @@ func getConfig() (*apptainerconf.File, error) {
 	// otherwise parse the default configuration file
 	cfg := apptainerconf.GetCurrentConfig()
 	if cfg == nil {
+		sylog.Warningf("loading configuration where it should be only done in testing")
 		var err error
-
 		configFile := buildcfg.APPTAINER_CONF_FILE
 		cfg, err = apptainerconf.Parse(configFile)
 		if err != nil {
