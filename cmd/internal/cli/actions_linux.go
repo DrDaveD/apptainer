@@ -607,12 +607,6 @@ func execStarter(cobraCmd *cobra.Command, image string, args []string, name stri
 	apptainerEnv := env.SetContainerEnv(generator, environment, IsCleanEnv, engineConfig.GetHomeDest())
 	engineConfig.SetApptainerEnv(apptainerEnv)
 
-	// Set binary path, substituting the user's PATH if running unprivileged
-	subPath := false
-	if UserNamespace || insideUserNs {
-		subPath = true
-	}
-	apptainerconf.SetBinaryPath("", subPath)
 	// Save the BinaryPath in the engineConfig for later use in other
 	// address spaces
 	engineConfig.SetBinaryPath(engineConfig.File.BinaryPath)

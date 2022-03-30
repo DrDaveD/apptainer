@@ -23,6 +23,8 @@ func SetupDefaultConfig(t *testing.T, path string) {
 	if err != nil {
 		t.Fatalf("while generating apptainer configuration: %s", err)
 	}
+	apptainerconf.SetCurrentConfig(c)
+	apptainerconf.SetBinaryPath("", true)
 
 	// FIXME
 	// The e2e tests currently run inside a PID namespace.

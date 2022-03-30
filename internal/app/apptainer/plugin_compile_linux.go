@@ -28,7 +28,6 @@ import (
 	"github.com/apptainer/apptainer/internal/pkg/util/bin"
 	pluginapi "github.com/apptainer/apptainer/pkg/plugin"
 	"github.com/apptainer/apptainer/pkg/sylog"
-	"github.com/apptainer/apptainer/pkg/util/apptainerconf"
 	"github.com/apptainer/apptainer/pkg/util/archive"
 	"github.com/apptainer/sif/v2/pkg/sif"
 )
@@ -136,8 +135,6 @@ func CompilePlugin(sourceDir, destSif, buildTags string, disableMinorCheck bool)
 	if err != nil {
 		return errors.New("apptainer source directory not found")
 	}
-
-	apptainerconf.SetBinaryPath("", true)
 
 	goPath, err := bin.FindBin("go")
 	if err != nil {

@@ -47,16 +47,24 @@ func FindBin(name string) (path string, err error) {
 func findOnPath(name string) (path string, err error) {
 	cfg := apptainerconf.GetCurrentConfig()
 	if cfg == nil {
-		sylog.Warningf("loading configuration where it should be only done in testing")
-		cfg, err = apptainerconf.Parse(buildcfg.APPTAINER_CONF_FILE)
-		if err != nil {
-			return "", errors.Wrap(err, "unable to parse apptainer configuration file")
+		if strings.HasSuffix(os.Args[0], ".test") {
+			// read config if doing unit tests
+			cfg, err = apptainerconf.Parse(buildcfg.APPTAINER_CONF_FILE)
+			if err != nil {
+				return "", errors.Wrap(err, "unable to parse apptainer configuration file")
+			}
+			apptainerconf.SetCurrentConfig(cfg)
+		} else {
+			sylog.Fatalf("configuration not pre-loaded in findOnPath")
 		}
 	}
 	newPath := cfg.BinaryPath
-	if strings.Contains(cfg.BinaryPath, "$PATH:") {
-		sylog.Warningf("Removing $PATH: from binary path where it should be only done in testing")
-		newPath = strings.Replace(newPath, "$PATH:", "", 1)
+	if strings.Contains(newPath, "$PATH:") {
+		if strings.HasSuffix(os.Args[0], ".test") {
+			apptainerconf.SetBinaryPath("", true)
+		} else {
+			sylog.Fatalf("SetBinaryPath has not been run before findOnPath")
+		}
 	}
 	oldPath := os.Getenv("PATH")
 	defer os.Setenv("PATH", oldPath)
@@ -74,10 +82,15 @@ func findOnPath(name string) (path string, err error) {
 func findFromConfigOrPath(name string) (path string, err error) {
 	cfg := apptainerconf.GetCurrentConfig()
 	if cfg == nil {
-		sylog.Warningf("loading configuration where it should be only done in testing")
-		cfg, err = apptainerconf.Parse(buildcfg.APPTAINER_CONF_FILE)
-		if err != nil {
-			return "", errors.Wrap(err, "unable to parse apptainer configuration file")
+		if strings.HasSuffix(os.Args[0], ".test") {
+			// read config if doing unit tests
+			cfg, err = apptainerconf.Parse(buildcfg.APPTAINER_CONF_FILE)
+			if err != nil {
+				return "", errors.Wrap(err, "unable to parse apptainer configuration file")
+			}
+			apptainerconf.SetCurrentConfig(cfg)
+		} else {
+			sylog.Fatalf("configuration not pre-loaded in findFromConfigOrPath")
 		}
 	}
 
