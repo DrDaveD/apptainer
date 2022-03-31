@@ -21,6 +21,7 @@ import (
 
 	"github.com/apptainer/apptainer/internal/pkg/buildcfg"
 	"github.com/apptainer/apptainer/internal/pkg/cgroups"
+	"github.com/apptainer/apptainer/internal/pkg/image/driver"
 	"github.com/apptainer/apptainer/internal/pkg/plugin"
 	"github.com/apptainer/apptainer/internal/pkg/runtime/engine/apptainer/rpc/client"
 	"github.com/apptainer/apptainer/internal/pkg/util/fs"
@@ -161,6 +162,9 @@ func create(ctx context.Context, engine *EngineOperations, rpcOps *client.RPC, p
 
 	// Tell apptainerconf the binary path
 	apptainerconf.SetBinaryPath(c.engine.EngineConfig.GetBinaryPath(), false)
+
+	// initialize internal image drivers
+	driver.InitImageDrivers(true, c.userNS, c.engine.EngineConfig.File)
 
 	// load image driver plugins
 	callbackType := (apptainercallback.RegisterImageDriver)(nil)
