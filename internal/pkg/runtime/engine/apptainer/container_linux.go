@@ -146,7 +146,7 @@ func create(ctx context.Context, engine *EngineOperations, rpcOps *client.RPC, p
 	}
 
 	// initialize internal image drivers
-	driver.InitImageDrivers(true, c.userNS, c.engine.EngineConfig.File)
+	driver.InitImageDrivers(true, c.userNS, c.engine.EngineConfig.File, 0)
 
 	// load image driver plugins
 	callbackType := (apptainercallback.RegisterImageDriver)(nil)
@@ -624,20 +624,16 @@ func (c *container) mountGeneric(mnt *mount.Point, tag mount.AuthorizedTag) (err
 			source = "."
 		}
 
-		// overlay requires root filesystem UID/GID since upper/work
-		// directories are owned by root
 		if tag == mount.LayerTag && mnt.Type == "overlay" {
-			if imageDriver != nil && c.engine.EngineConfig.File.EnableOverlay == "driver" {
-				if imageDriver.Features()&image.OverlayFeature != 0 {
-					params := &image.MountParams{
-						Source:     source,
-						Target:     dest,
-						Filesystem: mnt.Type,
-						Flags:      flags,
-						FSOptions:  opts,
-					}
-					return imageDriver.Mount(params, c.rpcOps.Mount)
+			if imageDriver != nil && imageDriver.Features()&image.OverlayFeature != 0 {
+				params := &image.MountParams{
+					Source:     source,
+					Target:     dest,
+					Filesystem: mnt.Type,
+					Flags:      flags,
+					FSOptions:  opts,
 				}
+				return imageDriver.Mount(params, c.rpcOps.Mount)
 			}
 		}
 	}
@@ -921,6 +917,11 @@ func (c *container) addOverlayMount(system *mount.System) error {
 	ov := c.session.Layer.(*overlay.Overlay)
 	hasUpper := false
 
+	if imageDriver != nil {
+		sylog.Debugf("imageDriver features: %v", imageDriver.Features())
+	}
+	sylog.Debugf("c.userNS: %v", c.userNS)
+
 	if c.engine.EngineConfig.GetWritableTmpfs() {
 		sylog.Debugf("Setup writable tmpfs overlay")
 
@@ -998,14 +999,15 @@ func (c *container) addOverlayMount(system *mount.System) error {
 			case image.SANDBOX:
 				allowed := os.Geteuid() == 0
 
-				if c.engine.EngineConfig.File.EnableOverlay == "driver" {
-					if imageDriver != nil && imageDriver.Features()&image.OverlayFeature != 0 {
-						allowed = true
-					}
+				if imageDriver != nil && imageDriver.Features()&image.OverlayFeature != 0 {
+					allowed = true
 				}
 
 				if !allowed {
-					return fmt.Errorf("only root user can use sandbox as overlay")
+					if !c.userNS {
+						return fmt.Errorf("only root user can use sandbox as overlay in setuid mode")
+					}
+					return fmt.Errorf("cannot use sandbox as overlay because unprivileged overlay is not available")
 				}
 
 				flags := uintptr(c.suidFlag | syscall.MS_NODEV)

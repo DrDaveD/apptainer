@@ -646,7 +646,14 @@ func execStarter(cobraCmd *cobra.Command, image string, args []string, name stri
 	generator.SetProcessEnvWithPrefixes(env.ApptainerPrefixes, "APPNAME", AppName)
 
 	// initialize internal image drivers
-	driver.InitImageDrivers(true, UserNamespace || insideUserNs, engineConfig.File)
+	var desiredFeatures imgutil.DriverFeature
+	if fs.IsFile(image) {
+		desiredFeatures |= imgutil.ImageFeature
+	}
+	if IsWritableTmpfs || len(OverlayPath) != 0 {
+		desiredFeatures |= imgutil.OverlayFeature
+	}
+	driver.InitImageDrivers(true, UserNamespace || insideUserNs, engineConfig.File, desiredFeatures)
 
 	// convert image file to sandbox if we are using user
 	// namespace or if we are currently running inside a

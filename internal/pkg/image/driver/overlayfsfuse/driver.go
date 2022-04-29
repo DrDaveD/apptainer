@@ -6,15 +6,14 @@
 // LICENSE.md file distributed with the sources of this project regarding your
 // rights to use or distribute this software.
 
-package squashfuse
+package overlayfsfuse
 
 import (
 	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
-	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,11 +25,11 @@ import (
 )
 
 const (
-	driverName = "squashfuse"
-	binName    = "squashfuse"
+	driverName = "overlayfsfuse"
+	binName    = "fuse-overlayfs"
 )
 
-type squashfuseDriver struct {
+type overlayfsfuseDriver struct {
 	cmd     *exec.Cmd
 	cmdpath string
 }
@@ -39,8 +38,10 @@ func Init(register bool, desiredFeatures image.DriverFeature) (bool, error) {
 	binPath, err := bin.FindBin(binName)
 	if err != nil {
 		sylog.Debugf("%v driver not enabled because: %v", driverName, err)
-		if (desiredFeatures & image.ImageFeature) != 0 {
-			sylog.Infof("%v not found, will not be able to mount SIF", binName)
+		if (desiredFeatures & image.OverlayFeature) != 0 {
+			// don't say that overlay won't work because it
+			//  might still work on a new-enough kernel
+			sylog.Infof("%v not found", binName)
 		}
 		return false, nil
 	}
@@ -48,29 +49,19 @@ func Init(register bool, desiredFeatures image.DriverFeature) (bool, error) {
 		return true, nil
 	}
 	sylog.Debugf("Registering Driver %v", driverName)
-	return true, image.RegisterDriver(driverName, &squashfuseDriver{nil, binPath})
+	return true, image.RegisterDriver(driverName, &overlayfsfuseDriver{nil, binPath})
 }
 
-func (d *squashfuseDriver) Features() image.DriverFeature {
-	return image.ImageFeature
+func (d *overlayfsfuseDriver) Features() image.DriverFeature {
+	return image.OverlayFeature
 }
 
-func (d *squashfuseDriver) Mount(params *image.MountParams, _ image.MountFunc) error {
-	optsStr := "offset=" + strconv.FormatUint(params.Offset, 10)
-	srcPath := params.Source
-	if path.Dir(params.Source) == "/proc/self/fd" {
-		// this will be passed as the first ExtraFile below, always fd 3
-		srcPath = "/proc/self/fd/3"
-	}
-	d.cmd = exec.Command(d.cmdpath, "-f", "-o", optsStr, srcPath, params.Target)
+func (d *overlayfsfuseDriver) Mount(params *image.MountParams, _ image.MountFunc) error {
+	optsStr := strings.Join(params.FSOptions, ",")
+	d.cmd = exec.Command(d.cmdpath, "-f", "-o", optsStr, params.Target)
 	sylog.Debugf("Executing %v", d.cmd.String())
 	var stderr bytes.Buffer
 	d.cmd.Stderr = &stderr
-	if path.Dir(params.Source) == "/proc/self/fd" {
-		d.cmd.ExtraFiles = make([]*os.File, 1)
-		targetFd, _ := strconv.Atoi(path.Base(params.Source))
-		d.cmd.ExtraFiles[0] = os.NewFile(uintptr(targetFd), params.Source)
-	}
 	d.cmd.SysProcAttr = &syscall.SysProcAttr{
 		AmbientCaps: []uintptr{
 			uintptr(capabilities.Map["CAP_SYS_ADMIN"].Value),
@@ -111,11 +102,11 @@ func (d *squashfuseDriver) Mount(params *image.MountParams, _ image.MountFunc) e
 	return fmt.Errorf("%v failed to mount %v in %v", binName, params.Target, maxTime)
 }
 
-func (d *squashfuseDriver) Start(_ *image.DriverParams) error {
+func (d *overlayfsfuseDriver) Start(_ *image.DriverParams) error {
 	return nil
 }
 
-func (d *squashfuseDriver) Stop() error {
+func (d *overlayfsfuseDriver) Stop() error {
 	if d.cmd != nil {
 		process := d.cmd.Process
 		if process != nil {
