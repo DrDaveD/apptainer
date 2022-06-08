@@ -3,11 +3,7 @@
 Since you are reading this from the Apptainer source code, it will be assumed
 that you are building/compiling from source.
 
-Apptainer packages are available for various Linux distributions, but may not
-always be up-to-date with the latest source release version.
-
-For full instructions on installation, including building RPMs,
-installing pre-built EPEL packages etc. please check the
+For more complete instructions on installation options, please check the
 [installation section of the admin guide](https://apptainer.org/docs/admin/main/installation.html).
 
 ## Install system dependencies
@@ -164,6 +160,9 @@ install prefix to a different path:
 ```sh
 ./mconfig -b ./buildtree -p /usr/local
 ```
+
+If you want a setuid-installation (formerly the defalt) use the
+`--with-suid` option.
 
 See the output of `./mconfig -h` for available options.
 

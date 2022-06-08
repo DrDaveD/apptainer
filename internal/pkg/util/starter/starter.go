@@ -68,6 +68,16 @@ func UseSuid(suid bool) CommandOp {
 	}
 }
 
+// IsSuidInstall returns true if the privileged binary is configured and exists
+func IsSuidInstall() bool {
+	if buildcfg.APPTAINER_SUID_INSTALL != 1 {
+		return false
+	}
+	path := filepath.Join(buildcfg.LIBEXECDIR, "apptainer/bin/starter-suid")
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // LoadOverlayModule sets LOAD_OVERLAY_MODULE environment variable
 // which tell starter to load overlay kernel module.
 func LoadOverlayModule(load bool) CommandOp {

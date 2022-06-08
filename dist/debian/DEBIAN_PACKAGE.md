@@ -50,8 +50,6 @@ configuration variables need to be prefixed by `DEB_`
 
 See `mconfig --help` for details about the configuration options.
 
-`export DEB_NOSUID=1`    adds --without-suid
-
 `export DEB_NONETWORK=1` adds --without-network
 
 `export DEB_NOSECCOMP=1` adds --without-seccomp
