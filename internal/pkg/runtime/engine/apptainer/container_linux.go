@@ -1609,11 +1609,18 @@ func (c *container) getHomePaths() (source string, dest string, err error) {
 		pw, err := user.CurrentOriginal()
 		if err == nil {
 			source = pw.Dir
-			if c.engine.EngineConfig.GetFakeroot() {
+			if os.Getuid() == 0 {
+				// Mount user home directory onto /root for
+				//  any root-mapped namespace
 				dest = "/root"
 			} else {
 				dest = pw.Dir
 			}
+		} else if os.Getuid() == 0 {
+			// The user could not be found
+			// This can happen when running under fakeroot
+			source = "/root"
+			dest = source
 		}
 	}
 
@@ -1739,6 +1746,17 @@ func (c *container) addUserbindsMount(system *mount.System) error {
 	defaultFlags := uintptr(syscall.MS_BIND | c.suidFlag | syscall.MS_NODEV | syscall.MS_REC)
 
 	for _, b := range c.engine.EngineConfig.GetBindPath() {
+		if strings.HasPrefix(b.Destination, "/.singularity.d/libs") {
+			// Defer to library bind time
+			libraries := c.engine.EngineConfig.GetLibrariesPath()
+			if b.Source == b.Destination {
+				libraries = append(libraries, b.Source)
+			} else {
+				libraries = append(libraries, b.Source+":"+b.Destination)
+			}
+			c.engine.EngineConfig.SetLibrariesPath(libraries)
+			continue
+		}
 		// data image bind
 		if b.ID() != "" || b.ImageSrc() != "" {
 			source, ok := c.imageBind[b.Destination]
@@ -2063,9 +2081,18 @@ func (c *container) addLibsMount(system *mount.System) error {
 	}
 
 	for _, lib := range libraries {
+		splits := strings.Split(lib, ":")
+		var file string
+		if len(splits) > 1 {
+			// this can happen with a user bind (including for
+			//   the fakeroot command) to the libs directory
+			//   where the base name is desired to be changed
+			lib = splits[0]
+			file = filepath.Base(splits[1])
+		} else {
+			file = filepath.Base(lib)
+		}
 		sylog.Debugf("Add library %s to mount list", lib)
-
-		file := filepath.Base(lib)
 		sessionFile := filepath.Join(sessionDir, file)
 
 		if err := c.session.AddFile(sessionFile, []byte{}); err != nil {

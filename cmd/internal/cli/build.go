@@ -21,6 +21,7 @@ import (
 	"github.com/apptainer/apptainer/internal/pkg/util/interactive"
 	"github.com/apptainer/apptainer/pkg/cmdline"
 	"github.com/apptainer/apptainer/pkg/image"
+	"github.com/apptainer/apptainer/pkg/sylog"
 	ocitypes "github.com/containers/image/v5/types"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -277,7 +278,13 @@ var buildCmd = &cobra.Command{
 
 func preRun(cmd *cobra.Command, args []string) {
 	if buildArgs.fakeroot {
-		fakerootExec(args)
+		fakerootExec()
+	} else {
+		spec := args[len(args)-1]
+		if os.Getuid() != 0 && fs.IsFile(spec) && !isImage(spec) {
+			sylog.Verbosef("Implying --fakeroot because building from definition file unprivileged")
+			fakerootExec()
+		}
 	}
 }
 
