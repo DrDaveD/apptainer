@@ -48,13 +48,7 @@ func (e *EngineOperations) CleanupContainer(ctx context.Context, fatal error, st
 
 	if imageDriver != nil {
 		if err := umount(); err != nil {
-			// Errors are OK here, just show them in debug.
-			// Everything will be unmounted when the namespace
-			// is deleted.
-			sylog.Debugf("%s", err)
-		}
-		if err := imageDriver.Stop(); err != nil {
-			sylog.Errorf("could not stop driver: %s", err)
+			sylog.Errorf("%s", err)
 		}
 	}
 
@@ -120,6 +114,7 @@ func (e *EngineOperations) CleanupContainer(ctx context.Context, fatal error, st
 }
 
 func umount() (err error) {
+	var errs string
 	var oldEffective uint64
 
 	caps := uint64(0)
@@ -130,12 +125,12 @@ func umount() (err error) {
 
 	oldEffective, err = capabilities.SetProcessEffective(caps)
 	if err != nil {
-		return
+		return fmt.Errorf("error setting CAP_SYS_ADMIN: %v", err)
 	}
 	defer func() {
 		_, e := capabilities.SetProcessEffective(oldEffective)
-		if err == nil {
-			err = e
+		if e != nil && errs == "" {
+			errs = "error restoring capabilities: " + e.Error()
 		}
 	}()
 
@@ -155,11 +150,27 @@ func umount() (err error) {
 				retries++
 				goto retry
 			}
-			return fmt.Errorf("while unmounting %s directory: %s", p, err)
+			if errs != "" {
+				errs += ", "
+			}
+			errs = fmt.Sprintf("%swhile unmounting %s directory: %s", errs, p, err)
+		}
+		if imageDriver == nil {
+			continue
+		}
+		err = imageDriver.Stop(p)
+		if err != nil {
+			if errs != "" {
+				errs += ", "
+			}
+			errs = fmt.Sprintf("%swhile stopping driver for %s: %s", errs, p, err)
 		}
 	}
 
-	return err
+	if errs == "" {
+		return nil
+	}
+	return fmt.Errorf("%s", errs)
 }
 
 func cleanupCrypt(path string) error {

@@ -34,7 +34,6 @@ type fs struct {
 
 const (
 	nfs    int64 = 0x6969
-	fuse   int64 = 0x65735546
 	ecrypt int64 = 0xF15F
 	lustre int64 = 0x0BD00BD0 //nolint:misspell
 	gpfs   int64 = 0x47504653
@@ -44,11 +43,6 @@ var incompatibleFs = map[int64]fs{
 	// NFS filesystem
 	nfs: {
 		name:       "NFS",
-		overlayDir: upperDir,
-	},
-	// FUSE filesystem
-	fuse: {
-		name:       "FUSE",
 		overlayDir: upperDir,
 	},
 	// ECRYPT filesystem
