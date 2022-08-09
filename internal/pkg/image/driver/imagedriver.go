@@ -11,6 +11,7 @@ package driver
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -110,6 +111,12 @@ func (d *fuseappsDriver) Mount(params *image.MountParams, mfunc image.MountFunc)
 	case "overlay":
 		f = &d.overlayFeature
 		optsStr := strings.Join(params.FSOptions, ",")
+		if (params.Flags & syscall.MS_RDONLY) != 0 {
+			if optsStr != "" {
+				optsStr = "," + optsStr
+			}
+			optsStr = "ro" + optsStr
+		}
 		cmd = exec.Command(f.cmdPath, "-f", "-o", optsStr, params.Target)
 
 	case "squashfs":
@@ -250,6 +257,22 @@ func (d *fuseappsDriver) Mount(params *image.MountParams, mfunc image.MountFunc)
 				sylog.Infof("%v", msg)
 			}
 			sylog.Debugf("%v mounted in %v", params.Target, totTime)
+			if params.Filesystem == "overlay" && os.Getuid() == 0 &&
+				(params.Flags&syscall.MS_RDONLY) == 0 {
+				// Using unix.Access is not sufficient here
+				// so have to attempt to create a file
+				binpath := params.Target + "/usr/bin"
+				tmpfile, err := ioutil.TempFile(binpath, ".tmp*")
+				if err != nil {
+					sylog.Debugf("%v not writable: %v", binpath, err)
+					sylog.Infof("/usr/bin not writable in container")
+					sylog.Infof("Consider using a different overlay upper layer filesystem type")
+				} else {
+					sylog.Debugf("successfully created %v", tmpfile.Name())
+					tmpfile.Close()
+					os.Remove(tmpfile.Name())
+				}
+			}
 			return nil
 		}
 	}

@@ -26,7 +26,8 @@ const (
 // Session directory layout manager
 type Session struct {
 	*Manager
-	Layer layer
+	Layer    layer
+	readonly bool
 }
 
 // Layer describes a layer interface added on top of session layout
@@ -98,6 +99,16 @@ func (s *Session) OverrideDir(path string, realpath string) {
 func (s *Session) RootFsPath() string {
 	path, _ := s.GetPath(rootFsDir)
 	return path
+}
+
+// SetReadonly sets the session to be Readonly
+func (s *Session) SetReadonly() {
+	s.readonly = true
+}
+
+// GetReadonly returns true if the session is Readonly
+func (s *Session) GetReadonly() bool {
+	return s.readonly
 }
 
 func (s *Session) createLayout(system *mount.System) error {

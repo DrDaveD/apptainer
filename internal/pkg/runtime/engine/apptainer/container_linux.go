@@ -628,6 +628,9 @@ func (c *container) mountGeneric(mnt *mount.Point, tag mount.AuthorizedTag) (err
 		dest = filepath.Join(c.session.FinalPath(), dest)
 	} else {
 		dest = mnt.Destination
+		if mnt.Type == "overlay" && c.session.GetReadonly() {
+			flags |= syscall.MS_RDONLY
+		}
 	}
 
 	if remount || propagation {
@@ -947,6 +950,7 @@ func (c *container) addOverlayMount(system *mount.System) error {
 	nb := 0
 	ov := c.session.Layer.(*overlay.Overlay)
 	hasUpper := false
+	hasWritable := false
 
 	if c.engine.EngineConfig.GetWritableTmpfs() {
 		sylog.Debugf("Setup writable tmpfs overlay")
@@ -981,6 +985,7 @@ func (c *container) addOverlayMount(system *mount.System) error {
 		}
 
 		hasUpper = true
+		hasWritable = true
 	}
 
 	for _, img := range c.engine.EngineConfig.GetImageList() {
@@ -1002,6 +1007,9 @@ func (c *container) addOverlayMount(system *mount.System) error {
 			src := img.Source
 			offset := overlay.Offset
 			size := overlay.Size
+			if img.Writable {
+				hasWritable = true
+			}
 
 			switch overlay.Type {
 			case image.EXT3:
@@ -1043,30 +1051,33 @@ func (c *container) addOverlayMount(system *mount.System) error {
 				}
 				system.Points.AddRemount(mount.PreLayerTag, dst, flags)
 
-				if !img.Writable {
-					// check if the sandbox directory is located on a compatible
-					// filesystem usable overlay lower directory
-					if err := fsoverlay.CheckLower(img.Path, 0); err != nil {
-						return err
+				if !overlayImageDriver {
+					// When no overlay image driver available,
+					//  make sure filesystems type are compatible
+					//  with kernel overlayfs
+					if !img.Writable {
+						// check if the sandbox directory is located on a compatible
+						// filesystem usable overlay lower directory
+						if err := fsoverlay.CheckLower(img.Path); err != nil {
+							return err
+						}
+					} else {
+						// check if the sandbox directory is located on a compatible
+						// filesystem usable with overlay upper directory
+						if err := fsoverlay.CheckUpper(img.Path); err != nil {
+							return err
+						}
 					}
+				}
+
+				if !img.Writable {
 					if fs.IsDir(filepath.Join(img.Path, "upper")) {
 						ov.AddLowerDir(filepath.Join(dst, "upper"))
 					} else {
 						ov.AddLowerDir(dst)
 					}
-				} else {
-					// check if the sandbox directory is located on a compatible
-					// filesystem usable with overlay upper directory
-					allowType := int64(0)
-					if overlayImageDriver {
-						// The imageDriver is likely to able to handle
-						//  a fuse upper even though the kernel can't
-						allowType = fsoverlay.Fuse
-					}
-					if err := fsoverlay.CheckUpper(img.Path, allowType); err != nil {
-						return err
-					}
 				}
+
 			default:
 				return fmt.Errorf("%s: overlay image with unknown format", img.Path)
 			}
@@ -1090,6 +1101,10 @@ func (c *container) addOverlayMount(system *mount.System) error {
 				hasUpper = true
 			}
 		}
+	}
+
+	if !hasWritable {
+		c.session.SetReadonly()
 	}
 
 	if hasUpper {

@@ -16,6 +16,9 @@ For older changes see the [archived Singularity change log](https://github.com/a
   `--fakeroot` that probably requires a sandbox image that was built with
   `--fix-perms`.
 - The `--nvccli` option implies `--nv`.
+- Replaced checks for compatible filesystem types when using fuse-overlayfs
+  with an INFO message when an incompatible filesystem type causes it to
+  be unwritable by a fakeroot user.
 
 ## v1.1.0-rc.1 - \[2022-08-01\]
 
