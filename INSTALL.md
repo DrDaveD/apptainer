@@ -169,6 +169,48 @@ If you want a setuid-installation (formerly the default) use the
 
 See the output of `./mconfig -h` for available options.
 
+## Installing improved performance squashfuse_ll
+
+If you want to have the best performance for unprivileged mounts of SIF
+files for multi-core applications, you can optionally install an improved
+performance version of `squashfuse_ll`.
+
+As of this writing there is a patch pending to the squashfuse project to
+add multithreading support that significantly improves performance for
+applications that access a lot of small files from many cores at once.
+
+First, make sure that additional required packages are installed.  On Debian:
+
+```sh
+apt-get install -y autoconf automake libtool pkg-config libfuse-dev zlib1g-dev
+``
+
+On CentOS/RHEL:
+```sh
+yum install -y autoconf automake libtool pkgconfig fuse3-devel zlib-devel
+```
+
+To download the source code do this:
+
+```sh
+SQUASHFUSEVERSION=0.1.105
+SQUASHFUSEPR=70
+curl -L -O https://github.com/vasi/squashfuse/archive/$SQUASHFUSEVERSION/squashfuse-$SQUASHFUSEVERSION.tar.gz
+curl -L -O https://github.com/vasi/squashfuse/pull/$SQUASHFUSEPR.patch
+```
+
+Then to compile and install do this:
+
+```sh
+tar xzf squashfuse-$SQUASHFUSEVERSION.tar.gz
+cd squashfuse-$SQUASHFUSEVERSION
+patch -p1 <../$SQUASHFUSEPR.patch
+./autogen.sh
+FLAGS=-std=c99 ./configure --enable-multithreading
+make squashfuse_ll
+sudo cp squashfuse_ll /usr/local/libexec/apptainer/bin
+```
+
 ## Building & Installing from RPM
 
 On a RHEL / CentOS / Fedora machine you can build an Apptainer into rpm
@@ -177,12 +219,16 @@ Apptainer across multiple machines, or wish to manage all software via
 `yum/dnf`.
 
 To build the rpms, in addition to the
-[dependencies](#install-system-dependencies),
+[system dependencies](#install-system-dependencies),
 install `rpm-build`, `wget`, and `golang`:
 
 ```sh
 sudo yum install -y rpm-build wget golang
 ```
+
+Also install the extra dependencies listed in the
+[improved squashfuse_ll section](#installing-improved-performance-squashfuse_ll)
+and download the files.
 
 The rpm build will use the OS distribution or EPEL version of Go,
 or it will use a different installation of Go, whichever is first in $PATH.
@@ -202,9 +248,9 @@ Download the tarball like this:
 wget https://dl.google.com/go/go$(scripts/get-min-go-version).src.tar.gz
 ```
 
-Download the latest
+Download and unpack the latest
 [release tarball](https://github.com/apptainer/apptainer/releases)
-and use it to install the RPM like this:
+like this:
 
 <!-- markdownlint-disable MD013 -->
 
@@ -212,8 +258,21 @@ and use it to install the RPM like this:
 VERSION=1.1.0-rc.2  # this is the apptainer version, change as you need
 # Fetch the source
 wget https://github.com/apptainer/apptainer/releases/download/v${VERSION}/apptainer-${VERSION}.tar.gz
-# Build rpms from the source tar.gz
-rpmbuild -tb apptainer-${VERSION}.tar.gz
+tar xf apptainer-${VERSION}.tar.gz
+cd apptainer-${VERSION}.tar.gz
+```
+
+At this point if you want the
+[improved performance squashfuse](#installing-improved-performance-squashfuse_ll)
+then install the extra packages and download the source code as listed there.
+Otherwise edit apptainer.spec and comment out the line beginning
+`%global squashfuse_version` to not include it.
+
+Then build the rpm like this
+
+```sh
+# Build rpms from the source
+rpmbuild -bb apptainer.spec
 # Install Apptainer using the resulting rpm
 sudo rpm -Uvh ~/rpmbuild/RPMS/x86_64/apptainer-$(echo $VERSION|tr - \~)-1.el7.x86_64.rpm
 # (Optionally) Install the setuid-root portion
