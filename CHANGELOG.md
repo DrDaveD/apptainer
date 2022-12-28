@@ -32,6 +32,8 @@ For older changes see the [archived Singularity change log](https://github.com/a
 
 ### Bug fixes
 
+- Change rpm packaging to automatically import any modified configuration
+  files in `/etc/singularity` when updating from singularity to apptainer.
 - Fix the use of `fakeroot`, `faked`, and `libfakeroot.so` if they are not
   suffixed by `-sysv`, as is for instance the case on Gentoo Linux.
 

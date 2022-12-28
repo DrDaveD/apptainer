@@ -491,7 +491,7 @@ func persistentPreRun(*cobra.Command, []string) error {
 		oldconfdir := filepath.Dir(filepath.Dir(configurationFile)) + "/singularity/"
 
 		if _, err := os.Stat(oldconfdir); err == nil {
-			sylog.Warningf("%s exists, migration to apptainer by system administrator is not complete", oldconfdir)
+			sylog.Infof("%s exists; cleanup by system administrator is not complete (see https://apptainer.org/docs/admin/latest/singularity_migration.html)", oldconfdir)
 		}
 
 		sylog.Debugf("Parsing configuration file %s", configurationFile)

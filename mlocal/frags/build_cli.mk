@@ -69,6 +69,21 @@ CLEANFILES += $(bash_completions)
 INSTALLFILES += $(bash_completions_INSTALL)
 ALL += $(bash_completions)
 
+# confgen program
+confgen := $(BUILDDIR)/confgen
+confgen_INSTALL := $(DESTDIR)$(LIBEXECDIR)/apptainer/etc/confgen
+
+$(confgen): $(apptainer_build_config) $(SOURCEDIR)/etc/conf/gen.go $(SOURCEDIR)/pkg/runtime/engine/apptainer/config/config.go
+	@echo " GO" $@
+	$(V)$(GO) build $(GO_MODFLAGS) $(GO_BUILDMODE) -tags "$(GO_TAGS)" $(GO_LDFLAGS) \
+		-o $(confgen) $(SOURCEDIR)/etc/conf/gen.go
+
+$(confgen_INSTALL): $(confgen)
+	@echo " INSTALL" $@
+	$(V)umask 0022 && mkdir -p $(@D)
+	$(V)install -m 0755 $< $@
+
+INSTALLFILES += $(confgen_INSTALL)
 
 # apptainer.conf file
 config := $(BUILDDIR)/apptainer.conf
@@ -76,10 +91,9 @@ config_INSTALL := $(DESTDIR)$(SYSCONFDIR)/apptainer/apptainer.conf
 # override this to empty to avoid merging old configuration settings
 old_config := $(config_INSTALL)
 
-$(config): $(apptainer_build_config) $(SOURCEDIR)/etc/conf/gen.go $(SOURCEDIR)/pkg/runtime/engine/apptainer/config/config.go
+$(config): $(confgen)
 	@echo " GEN $@`if [ -n "$(old_config)" ]; then echo " from $(old_config)"; fi`"
-	$(V)$(GO) run $(GO_MODFLAGS) $(SOURCEDIR)/etc/conf/gen.go \
-		$(old_config) $(config)
+	$(V)$(confgen) $(old_config) $(config)
 
 $(config_INSTALL): $(config)
 	@echo " INSTALL" $@
