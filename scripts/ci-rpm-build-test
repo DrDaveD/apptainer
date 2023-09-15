@@ -74,4 +74,7 @@ su testuser -c '
 
   # remove any downloaded files so tar files do not get into release assets
   rm -f $DOWNLOADEDFILES
+
+  # remove apptainer so it does not interfere with following unprivileged test
+  sudo yum remove -y apptainer
 '
