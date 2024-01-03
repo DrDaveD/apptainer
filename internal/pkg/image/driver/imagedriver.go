@@ -24,6 +24,7 @@ import (
 
 	"github.com/apptainer/apptainer/internal/pkg/buildcfg"
 	"github.com/apptainer/apptainer/internal/pkg/util/bin"
+	"github.com/apptainer/apptainer/internal/pkg/util/fs/squashfs"
 	"github.com/apptainer/apptainer/pkg/image"
 	"github.com/apptainer/apptainer/pkg/sylog"
 	"github.com/apptainer/apptainer/pkg/util/apptainerconf"
@@ -93,6 +94,12 @@ func InitImageDrivers(register, unprivileged bool, fileconf *apptainerconf.File,
 		return nil
 	}
 
+	if !unprivileged && os.Getuid() == 0 {
+		// Skip all the FUSE drivers when running as root
+		sylog.Debugf("skipping installing %v image driver because running as root", DriverName)
+		return nil
+	}
+
 	var squashFeature fuseappsFeature
 	var ext3Feature fuseappsFeature
 	var overlayFeature fuseappsFeature
@@ -103,7 +110,7 @@ func InitImageDrivers(register, unprivileged bool, fileconf *apptainerconf.File,
 	// However, only indicate that it is available when it is needed
 	// for other reasons, because when it is marked as available it
 	// takes precedence over the kernel squashfs.
-	if unprivileged || !fileconf.AllowSetuidMountSquashfs {
+	if unprivileged || !squashfs.SetuidMountAllowed(fileconf) {
 		if squashFeature.init("squashfuse_ll|squashfuse", "mount SIF or other squashfs files", desiredFeatures&image.SquashFeature) {
 			features |= image.SquashFeature
 		}
