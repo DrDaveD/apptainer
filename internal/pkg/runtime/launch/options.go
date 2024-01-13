@@ -150,7 +150,8 @@ type launchOptions struct {
 	IgnoreUserns      bool
 	UseBuildConfig    bool
 	TmpDir            string
-	Underlay          bool // whether prefer underlay over overlay
+	Underlay          bool // whether to prefer underlay over overlay
+	NoUnderlay        bool // whether to prefer overlay over underlay
 	ShareNSMode       bool // whether running in sharens mode
 	ShareNSFd         int  // fd opened in sharens mode
 }
@@ -567,6 +568,14 @@ func OptTmpDir(a string) Option {
 func OptUnderlay(b bool) Option {
 	return func(lo *launchOptions) error {
 		lo.Underlay = b
+		return nil
+	}
+}
+
+// OptNoUnderlay
+func OptNoUnderlay(b bool) Option {
+	return func(lo *launchOptions) error {
+		lo.NoUnderlay = b
 		return nil
 	}
 }

@@ -352,6 +352,7 @@ func launchContainer(cmd *cobra.Command, image string, args []string, instanceNa
 		launch.OptUseBuildConfig(useBuildConfig),
 		launch.OptTmpDir(tmpDir),
 		launch.OptUnderlay(underlay),
+		launch.OptNoUnderlay(noUnderlay),
 		launch.OptShareNSMode(shareNS),
 		launch.OptShareNSFd(fd),
 	}

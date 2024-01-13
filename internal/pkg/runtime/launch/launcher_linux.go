@@ -195,6 +195,8 @@ func (l *Launcher) Exec(ctx context.Context, image string, args []string, instan
 
 	// Prefer underlay for bind
 	l.engineConfig.SetUnderlay(l.cfg.Underlay)
+	// Prefer overlay for bind
+	l.engineConfig.SetNoUnderlay(l.cfg.NoUnderlay)
 
 	// Check key is available for encrypted image, if applicable.
 	// If we are joining an instance, then any encrypted image is already mounted.

@@ -1023,6 +1023,8 @@ func (e *EngineOperations) checkSignalPropagation() {
 }
 
 // setSessionLayer will test if overlay is supported/allowed.
+//
+//nolint:maintidx
 func (e *EngineOperations) setSessionLayer(img *image.Image, userNS bool) error {
 	e.EngineConfig.SetSessionLayer(apptainerConfig.DefaultLayer)
 
@@ -1093,21 +1095,29 @@ func (e *EngineOperations) setSessionLayer(img *image.Image, userNS bool) error 
 		if !writableImage {
 			if e.EngineConfig.File.EnableOverlay == "yes" || e.EngineConfig.File.EnableOverlay == "try" {
 				if e.EngineConfig.GetUnderlay() && e.EngineConfig.File.EnableUnderlay {
-					sylog.Debugf("Attempting to use 'underlay' over 'overlay': '--underlay' is set")
+					sylog.Debugf("Using 'underlay' because '--underlay' option is set")
 					e.EngineConfig.SetSessionLayer(apptainerConfig.UnderlayLayer)
 					return nil
 				}
-				err := overlay.CheckRootless()
-				if err == nil {
-					e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
-					return nil
-				}
-				if err != overlay.ErrNoRootlessOverlay {
-					sylog.Warningf("While checking for rootless overlay support: %s", err)
+				if img.Type == image.SANDBOX {
+					err := overlay.CheckRootless()
+					if err == nil {
+						e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
+						return nil
+					}
+					if err != overlay.ErrNoRootlessOverlay {
+						sylog.Warningf("While checking for rootless overlay support: %s", err)
+					}
 				}
 			}
 			if !e.EngineConfig.File.EnableUnderlay {
-				sylog.Debugf("Not attempting to use underlay with user namespace: disabled by configuration ('enable underlay = no')")
+				sylog.Debugf("Not using underlay with user namespace: disabled by configuration ('enable underlay = no')")
+				e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
+				return nil
+			}
+			if e.EngineConfig.GetNoUnderlay() {
+				sylog.Debugf("Not using underlay with user namespace because '--no-underlay' option is set")
+				e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
 				return nil
 			}
 			sylog.Debugf("Using underlay layer: user namespace requested")
@@ -1118,15 +1128,44 @@ func (e *EngineOperations) setSessionLayer(img *image.Image, userNS bool) error 
 		return nil
 	}
 
+	// Not running in a user namespace; in setuid mode or running as root
+
 	// Now check if there is an overlay entry in /proc/filesystems
 	if has, _ := proc.HasFilesystem("overlay"); has {
 		sylog.Debugf("Overlay seems supported and allowed by kernel")
 		switch e.EngineConfig.File.EnableOverlay {
 		case "yes", "try":
-			e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
+			if writableTmpfs || hasOverlayImage {
+				sylog.Debugf("Trying overlayfs because overlay was requested")
+				e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
+				return nil
+			}
+			if hasSIFOverlay {
+				sylog.Debugf("Attempting to use overlayfs for SIF overlay (enable overlay = %v)\n", e.EngineConfig.File.EnableOverlay)
+				e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
+				return nil
+			}
 
-			if !writableImage || hasSIFOverlay {
-				sylog.Debugf("Attempting to use overlayfs (enable overlay = %v)\n", e.EngineConfig.File.EnableOverlay)
+			if !writableImage {
+				if e.EngineConfig.File.EnableUnderlay {
+					if e.EngineConfig.GetNoUnderlay() {
+						sylog.Debugf("Using 'overlay' because '--no-underlay' option is set")
+						e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
+						return nil
+					}
+					if e.EngineConfig.GetUnderlay() {
+						sylog.Debugf("Using 'underlay' because '--underlay' option is set")
+						e.EngineConfig.SetSessionLayer(apptainerConfig.UnderlayLayer)
+						return nil
+					}
+					if img.Type == image.SIF && !squashfs.SetuidMountAllowed(e.EngineConfig.File) {
+						sylog.Debugf("Using 'underlay' because squashfs is not mounted by kernel")
+						e.EngineConfig.SetSessionLayer(apptainerConfig.UnderlayLayer)
+						return nil
+					}
+				}
+				sylog.Debugf("Attempting to use overlayfs for non-writable image (enable overlay = %v)\n", e.EngineConfig.File.EnableOverlay)
+				e.EngineConfig.SetSessionLayer(apptainerConfig.OverlayLayer)
 				return nil
 			}
 

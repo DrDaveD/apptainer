@@ -89,7 +89,8 @@ var (
 	ignoreFakerootCmd bool
 	ignoreUserns      bool
 
-	underlay bool // whether using underlay instead of overlay
+	underlay   bool // prefer underlay instead of overlay
+	noUnderlay bool // prefer overlay instead of underlay
 
 	shareNS bool // mode for launching container using shared namespace
 )
@@ -813,8 +814,19 @@ var actionUnderlayFlag = cmdline.Flag{
 	Value:        &underlay,
 	DefaultValue: false,
 	Name:         "underlay",
-	Usage:        "use underlay instead of overlay for bind mounts",
+	Usage:        "prefer underlay over overlay for bind mounts",
 	EnvKeys:      []string{"UNDERLAY"},
+	Hidden:       false,
+}
+
+// --underlay
+var actionNoUnderlayFlag = cmdline.Flag{
+	ID:           "noUnderlayFlag",
+	Value:        &noUnderlay,
+	DefaultValue: false,
+	Name:         "no-underlay",
+	Usage:        "prefer overlay over underlay for bind mounts",
+	EnvKeys:      []string{"NOUNDERLAY"},
 	Hidden:       false,
 }
 
@@ -921,6 +933,7 @@ func init() {
 		cmdManager.RegisterFlagForCmd(&actionIgnoreFakerootCommand, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&actionIgnoreUsernsFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&actionUnderlayFlag, actionsInstanceCmd...)
+		cmdManager.RegisterFlagForCmd(&actionNoUnderlayFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&actionShareNSFlag, actionsCmd...)
 	})
 }

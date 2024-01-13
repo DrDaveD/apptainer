@@ -9,6 +9,16 @@ For older changes see the [archived Singularity change log](https://github.com/a
 
 ## Changes for v1.3.x
 
+Changes since v1.3.0-rc.1
+
+- Add support for the `--underlay` action option while in setuid mode or
+  when running as the root user.  Make it the default when overlay is
+  not explicitly requested while the image is a SIF file mounted with
+  FUSE, so that fuse-overlayfs is not used in that case where it is not
+  needed.
+- Add `--no-underlay` action option to force using overlay (or more
+  likely fuse-overlayfs) when underlay is the default.
+
 ## v1.3.0-rc.1 - \[2024-01-10\]
 
 Changes since v1.2.5

@@ -151,6 +151,7 @@ type JSONConfig struct {
 	DbusSessionBusAddress string            `json:"dbusSessionBusAddress,omitempty"`
 	NoEval                bool              `json:"noEval,omitempty"`
 	Underlay              bool              `json:"underlay,omitempty"`
+	NoUnderlay            bool              `json:"noUnderlay,omitempty"`
 	UserInfo              UserInfo          `json:"userInfo,omitempty"`
 	WritableOverlay       bool              `json:"writableOverlay,omitempty"`
 	ShareNSMode           bool              `json:"sharensMode,omitempty"`
@@ -933,6 +934,16 @@ func (e *EngineConfig) SetUnderlay(underlay bool) {
 // GetUnderlay gets the value of whether to use underlay instead of overlay
 func (e *EngineConfig) GetUnderlay() bool {
 	return e.JSON.Underlay
+}
+
+// SetNoUnderlay sets whether to use overlay instead of underlay
+func (e *EngineConfig) SetNoUnderlay(noUnderlay bool) {
+	e.JSON.NoUnderlay = noUnderlay
+}
+
+// GetNoUnderlay gets the value of whether to use overlay instead of underlay
+func (e *EngineConfig) GetNoUnderlay() bool {
+	return e.JSON.NoUnderlay
 }
 
 // SetWritableOverlay sets whether the overlay is writable or not
