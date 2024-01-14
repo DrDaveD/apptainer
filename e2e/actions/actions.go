@@ -262,7 +262,6 @@ func (c actionTests) actionExecMultiProfile(t *testing.T) {
 				name        string
 				argv        []string
 				exit        int
-				wantOutputs []e2e.ApptainerCmdResultOp
 			}{
 				{
 					name: "ContainOnly",
@@ -329,7 +328,7 @@ func (c actionTests) actionExecMultiProfile(t *testing.T) {
 					e2e.WithCommand("exec"),
 					e2e.WithDir("/tmp"),
 					e2e.WithArgs(tt.argv...),
-					e2e.ExpectExit(tt.exit, tt.wantOutputs...),
+					e2e.ExpectExit(tt.exit),
 				)
 			}
 		})

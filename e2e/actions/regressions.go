@@ -64,9 +64,9 @@ func (c actionTests) issue4587(t *testing.T) {
 		t,
 		e2e.WithProfile(e2e.UserProfile),
 		e2e.WithDir(u.Dir),
-		e2e.WithCommand("exec"),
+		e2e.WithCommand("-d exec"),
 		e2e.WithArgs("--home", homeBind, c.env.ImagePath, "test", "-f", filepath.Join(u.Dir, "canary_file")),
-		e2e.ExpectExit(0),
+		e2e.ExpectExit(0,e2e.ExpectOutput(e2e.UnwantedContainMatch, "\n")),
 	)
 }
 
