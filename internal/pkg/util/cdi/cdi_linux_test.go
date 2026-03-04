@@ -459,6 +459,243 @@ func TestAddCdiDevicesWithMounts(t *testing.T) {
 	}
 }
 
+// TestGetCdiDevs tests GetCdiDevs for various spec configurations.
+func TestGetCdiDevs(t *testing.T) {
+	tests := []struct {
+		name     string
+		spec     *specs.Spec
+		wantDevs []string
+		wantErr  bool
+	}{
+		{
+			name:     "nil spec returns error",
+			spec:     nil,
+			wantDevs: []string{},
+			wantErr:  true,
+		},
+		{
+			name:     "spec with nil Linux returns empty",
+			spec:     &specs.Spec{},
+			wantDevs: nil,
+			wantErr:  false,
+		},
+		{
+			name: "spec with Linux but no devices returns empty",
+			spec: &specs.Spec{
+				Linux: &specs.Linux{},
+			},
+			wantDevs: nil,
+			wantErr:  false,
+		},
+		{
+			name: "spec with one device returns its path",
+			spec: &specs.Spec{
+				Linux: &specs.Linux{
+					Devices: []specs.LinuxDevice{
+						{Path: "/dev/gpu0"},
+					},
+				},
+			},
+			wantDevs: []string{"/dev/gpu0"},
+			wantErr:  false,
+		},
+		{
+			name: "spec with multiple devices returns all paths",
+			spec: &specs.Spec{
+				Linux: &specs.Linux{
+					Devices: []specs.LinuxDevice{
+						{Path: "/dev/gpu0"},
+						{Path: "/dev/gpu1"},
+						{Path: "/dev/dri/card0"},
+					},
+				},
+			},
+			wantDevs: []string{"/dev/gpu0", "/dev/gpu1", "/dev/dri/card0"},
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			devs, err := GetCdiDevs(tt.spec)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetCdiDevs() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantDevs != nil {
+				if len(devs) != len(tt.wantDevs) {
+					t.Errorf("GetCdiDevs() returned %d devs, want %d", len(devs), len(tt.wantDevs))
+					return
+				}
+				for i, d := range devs {
+					if d != tt.wantDevs[i] {
+						t.Errorf("GetCdiDevs()[%d] = %q, want %q", i, d, tt.wantDevs[i])
+					}
+				}
+			} else if len(devs) != 0 {
+				t.Errorf("GetCdiDevs() = %v, want empty", devs)
+			}
+		})
+	}
+}
+
+// TestGetCdiMounts tests GetCdiMounts for various spec configurations.
+func TestGetCdiMounts(t *testing.T) {
+	tests := []struct {
+		name       string
+		spec       *specs.Spec
+		wantBinds  []string
+		wantErr    bool
+	}{
+		{
+			name:      "nil spec returns error",
+			spec:      nil,
+			wantBinds: []string{},
+			wantErr:   true,
+		},
+		{
+			name:      "spec with no mounts returns empty",
+			spec:      &specs.Spec{},
+			wantBinds: nil,
+			wantErr:   false,
+		},
+		{
+			name: "readwrite mount has no :ro suffix",
+			spec: &specs.Spec{
+				Mounts: []specs.Mount{
+					{Source: "/host/data", Destination: "/container/data", Options: []string{"rw", "bind"}},
+				},
+			},
+			wantBinds: []string{"/host/data:/container/data"},
+			wantErr:   false,
+		},
+		{
+			name: "readonly mount gets :ro suffix",
+			spec: &specs.Spec{
+				Mounts: []specs.Mount{
+					{Source: "/host/lib", Destination: "/container/lib", Options: []string{"ro", "bind"}},
+				},
+			},
+			wantBinds: []string{"/host/lib:/container/lib:ro"},
+			wantErr:   false,
+		},
+		{
+			name: "mount with no options has no :ro suffix",
+			spec: &specs.Spec{
+				Mounts: []specs.Mount{
+					{Source: "/host/tmp", Destination: "/container/tmp"},
+				},
+			},
+			wantBinds: []string{"/host/tmp:/container/tmp"},
+			wantErr:   false,
+		},
+		{
+			name: "multiple mounts with mixed options",
+			spec: &specs.Spec{
+				Mounts: []specs.Mount{
+					{Source: "/host/rw", Destination: "/container/rw", Options: []string{"rw"}},
+					{Source: "/host/ro", Destination: "/container/ro", Options: []string{"ro"}},
+				},
+			},
+			wantBinds: []string{"/host/rw:/container/rw", "/host/ro:/container/ro:ro"},
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			binds, err := GetCdiMounts(tt.spec)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetCdiMounts() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantBinds != nil {
+				if len(binds) != len(tt.wantBinds) {
+					t.Errorf("GetCdiMounts() returned %d binds, want %d: %v", len(binds), len(tt.wantBinds), binds)
+					return
+				}
+				for i, b := range binds {
+					if b != tt.wantBinds[i] {
+						t.Errorf("GetCdiMounts()[%d] = %q, want %q", i, b, tt.wantBinds[i])
+					}
+				}
+			} else if len(binds) != 0 {
+				t.Errorf("GetCdiMounts() = %v, want empty", binds)
+			}
+		})
+	}
+}
+
+// TestGetCdiEnvironment tests GetCdiEnvironment for various spec configurations.
+func TestGetCdiEnvironment(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    *specs.Spec
+		wantEnv []string
+		wantErr bool
+	}{
+		{
+			name:    "nil spec returns error",
+			spec:    nil,
+			wantEnv: []string{},
+			wantErr: true,
+		},
+		{
+			name:    "spec with nil Process returns error",
+			spec:    &specs.Spec{},
+			wantEnv: []string{},
+			wantErr: true,
+		},
+		{
+			name: "spec with Process but no env returns empty slice",
+			spec: &specs.Spec{
+				Process: &specs.Process{},
+			},
+			wantEnv: []string{},
+			wantErr: false,
+		},
+		{
+			name: "spec with Process and one env var",
+			spec: &specs.Spec{
+				Process: &specs.Process{
+					Env: []string{"FOO=bar"},
+				},
+			},
+			wantEnv: []string{"FOO=bar"},
+			wantErr: false,
+		},
+		{
+			name: "spec with Process and multiple env vars",
+			spec: &specs.Spec{
+				Process: &specs.Process{
+					Env: []string{"NVIDIA_VISIBLE_DEVICES=0", "CUDA_HOME=/usr/local/cuda", "PATH=/usr/bin"},
+				},
+			},
+			wantEnv: []string{"NVIDIA_VISIBLE_DEVICES=0", "CUDA_HOME=/usr/local/cuda", "PATH=/usr/bin"},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env, err := GetCdiEnvironment(tt.spec)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetCdiEnvironment() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if len(env) != len(tt.wantEnv) {
+				t.Errorf("GetCdiEnvironment() returned %d vars, want %d: %v", len(env), len(tt.wantEnv), env)
+				return
+			}
+			for i, e := range env {
+				if e != tt.wantEnv[i] {
+					t.Errorf("GetCdiEnvironment()[%d] = %q, want %q", i, e, tt.wantEnv[i])
+				}
+			}
+		})
+	}
+}
+
 // TestAddCdiDevicesWithMountAndDeviceNodes tests AddCdiDevices with both mounts and device nodes.
 func TestAddCdiDevicesWithMountAndDeviceNodes(t *testing.T) {
 	tmpDir := t.TempDir()
