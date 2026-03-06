@@ -408,7 +408,7 @@ jobs:
 
   e2e_tests:
     name: e2e_tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -433,6 +433,11 @@ jobs:
               echo "E: ./scripts/should-e2e-run returned with exit code $rc. Abort."
               exit $rc ;;
           esac
+
+      - name: Disable Ubuntu 24.04 userns apparmor restriction
+        if: env.run_tests
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Setup Go
         if: env.run_tests
@@ -468,6 +473,21 @@ jobs:
           Delegate=cpu cpuset io memory pids
           EOF
           sudo systemctl daemon-reload
+
+#      - name: Check for SSH secret
+#        if: env.run_tests
+#        id: ssh-secret-check
+#        shell: bash
+#        run: echo "available=${{ secrets.GATEWAY_IP != '' }}" >> $GITHUB_OUTPUT
+#
+#      - name: Debug through SSH
+#        if: ${{ steps.ssh-secret-check.outputs.available == 'true' }}
+#        uses: edipizarro/runner-open-ssh @main
+#        with:
+#          sshPublicKey: ${{ secrets.SSH_PUBLIC_KEY }}
+#          gatewayPrivateKey: ${{ secrets.GATEWAY_PRIVATE_KEY }}
+#          gatewayIP: ${{ secrets.GATEWAY_IP }}
+#          gatewayUser: ${{ secrets.GATEWAY_USER }}
 
       - name: Build and install Apptainer
         if: env.run_tests
