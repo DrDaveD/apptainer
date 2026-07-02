@@ -148,7 +148,7 @@ func EnsureDebianImage(t *testing.T, env TestEnv) {
 
 	imageSource := "docker://ubuntu:20.04"
 	if lddversion >= 35 {
-		imageSource = "docker://ubuntu:22.04"
+		imageSource = "docker://ubuntu:24.04"
 	}
 
 	env.RunApptainer(
