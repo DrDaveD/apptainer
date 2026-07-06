@@ -562,9 +562,16 @@ func (l *Launcher) resolveOverlayBase(image string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("while searching --basepath for the base image of %s: %w", image, err)
 	}
+	base, err = filepath.Abs(base)
+	if err != nil {
+		return "", fmt.Errorf("failed to determine absolute path for base image %s: %w", base, err)
+	}
 	sylog.Debugf("Found base image %s for overlay image %s (hash %s)", base, image, hash)
 
-	overlaySpec := image
+	overlaySpec, err := filepath.Abs(image)
+	if err != nil {
+		return "", fmt.Errorf("failed to determine absolute path for overlay image %s: %w", image, err)
+	}
 	if !l.cfg.Writable {
 		overlaySpec += ":ro"
 	}
