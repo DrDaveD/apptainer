@@ -407,6 +407,7 @@ func runBuildLocal(ctx context.Context, cmd *cobra.Command, dst, spec string, fa
 		Var:                variant,
 		Platform:           *dp,
 		Reproducible:       buildArgs.reproducible,
+		Overlay:            buildArgs.overlay,
 	}
 	config := build.Config{
 		Dest:      dst,

@@ -35,6 +35,15 @@ Changes since 1.5.x
   section to use a safer method.
 - Add a `sync writable extfs` directive to apptainer.conf. When enabled,
   writable extfs image mounts use the `sync` mount option.
+- Add an `--overlay` option to `apptainer build`, that produces a SIF
+  containing only the files added, changed, or removed relative to a
+  `Bootstrap: localimage` base image, stored as an overlay partition
+  tagged with a hash of the base image.
+- Add a `--basepath` action command option (and `APPTAINER_BASEPATH`
+  environment variable), a colon-separated list of paths to search for
+  the base image of an overlay image built with `apptainer build
+  --overlay`, so it can be combined with the overlay automatically at
+  run time.
 
 ## v1.5.x changes
 

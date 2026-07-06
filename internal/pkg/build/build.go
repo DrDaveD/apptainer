@@ -12,6 +12,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -270,7 +271,22 @@ func (b *Build) Full(ctx context.Context) error {
 	// clean up build normally
 	defer b.cleanUp()
 
+	if b.Conf.Opts.Overlay {
+		if b.Conf.Format != "sif" {
+			return fmt.Errorf("'--overlay' is only supported when building a SIF image")
+		}
+		if b.Conf.Opts.DataPartition {
+			return fmt.Errorf("'--overlay' cannot be used together with '--datapartition'")
+		}
+		if bs := b.stages[len(b.stages)-1].b.Recipe.Header["bootstrap"]; bs != "localimage" {
+			return fmt.Errorf("'--overlay' currently requires 'Bootstrap: localimage', got %q", bs)
+		}
+	}
+
 	oldumask := syscall.Umask(0o002)
+
+	var overlayBaseSnapshot map[string]overlayFileState
+	var overlayBaseHash string
 
 	// build each stage one after the other
 	for i, stage := range b.stages {
@@ -316,6 +332,17 @@ func (b *Build) Full(ctx context.Context) error {
 			_, err := stage.c.Pack(ctx)
 			if err != nil {
 				return fmt.Errorf("packer failed to pack: %v", err)
+			}
+
+			if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
+				overlayBaseSnapshot, err = snapshotRootfs(stage.b.RootfsPath)
+				if err != nil {
+					return fmt.Errorf("while snapshotting base image for overlay build: %w", err)
+				}
+				overlayBaseHash, err = hashBaseImage(stage.b.Recipe.Header["from"])
+				if err != nil {
+					return fmt.Errorf("while hashing base image for overlay build: %w", err)
+				}
 			}
 		}
 
@@ -390,6 +417,26 @@ func (b *Build) Full(ctx context.Context) error {
 
 		if err := stage.runTestScript(sessionResolv, sessionHosts); err != nil {
 			return fmt.Errorf("failed to execute %%test script: %v", err)
+		}
+
+		if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
+			diffDir, err := os.MkdirTemp(stage.b.TmpDir, "overlay-diff-")
+			if err != nil {
+				return fmt.Errorf("while creating overlay diff directory: %w", err)
+			}
+			if err := buildOverlayDiff(stage.b.RootfsPath, overlayBaseSnapshot, diffDir); err != nil {
+				return fmt.Errorf("while computing overlay diff: %w", err)
+			}
+			if err := writeOverlayBaseHash(diffDir, overlayBaseHash); err != nil {
+				return fmt.Errorf("while writing overlay base hash: %w", err)
+			}
+			hashJSON, err := json.Marshal(overlayBaseHash)
+			if err != nil {
+				return err
+			}
+			stage.b.JSONObjects[image.SIFDescOverlayBaseHash] = hashJSON
+			stage.b.RootfsPath = diffDir
+			sylog.Infof("Built overlay image on top of base image with hash %s", overlayBaseHash)
 		}
 	}
 
