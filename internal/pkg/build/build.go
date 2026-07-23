@@ -446,13 +446,13 @@ func (b *Build) Full(ctx context.Context) error {
 			}
 			stage.b.JSONObjects[image.SIFDescOverlayBaseHash] = hashJSON
 
-			// Unmount overlayfs and switch to upper directory
+			// Unmount overlayfs and switch to overlay parent directory
 			if overlayMount != nil {
-				upperDir, err := TeardownOverlayMount(overlayMount)
+				overlayDir, err := TeardownOverlayMount(overlayMount)
 				if err != nil {
 					return fmt.Errorf("while tearing down overlay mount: %w", err)
 				}
-				stage.b.RootfsPath = upperDir
+				stage.b.RootfsPath = overlayDir
 				overlayMount = nil
 			}
 
