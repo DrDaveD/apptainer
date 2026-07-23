@@ -12,6 +12,7 @@ package build
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -270,7 +271,31 @@ func (b *Build) Full(ctx context.Context) error {
 	// clean up build normally
 	defer b.cleanUp()
 
+	if b.Conf.Opts.Overlay {
+		if b.Conf.Format != "sif" {
+			return fmt.Errorf("'--overlay' is only supported when building a SIF image")
+		}
+		if b.Conf.Opts.DataPartition {
+			return fmt.Errorf("'--overlay' cannot be used together with '--datapartition'")
+		}
+		if bs := b.stages[len(b.stages)-1].b.Recipe.Header["bootstrap"]; bs != "localimage" {
+			return fmt.Errorf("'--overlay' currently requires 'Bootstrap: localimage', got %q", bs)
+		}
+	}
+
 	oldumask := syscall.Umask(0o002)
+
+	var overlayMount *OverlayMount
+	var overlayBaseHash string
+
+	// Ensure overlayfs is unmounted if an error occurs
+	defer func() {
+		if overlayMount != nil {
+			if _, err := TeardownOverlayMount(overlayMount); err != nil {
+				sylog.Errorf("Failed to unmount overlayfs: %v", err)
+			}
+		}
+	}()
 
 	// build each stage one after the other
 	for i, stage := range b.stages {
@@ -316,6 +341,22 @@ func (b *Build) Full(ctx context.Context) error {
 			_, err := stage.c.Pack(ctx)
 			if err != nil {
 				return fmt.Errorf("packer failed to pack: %v", err)
+			}
+
+			if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
+				// Set up overlayfs with base image as lower layer
+				overlayMount, err = SetupOverlayMount(stage.b.RootfsPath, stage.b.TmpDir)
+				if err != nil {
+					return fmt.Errorf("while setting up overlay mount for build: %w", err)
+				}
+				// Update stage rootfs to point to the overlayfs merged directory
+				stage.b.RootfsPath = overlayMount.MergedDir
+
+				// Hash the base image for later use
+				overlayBaseHash, err = hashBaseImage(stage.b.Recipe.Header["from"])
+				if err != nil {
+					return fmt.Errorf("while hashing base image for overlay build: %w", err)
+				}
 			}
 		}
 
@@ -390,6 +431,32 @@ func (b *Build) Full(ctx context.Context) error {
 
 		if err := stage.runTestScript(sessionResolv, sessionHosts); err != nil {
 			return fmt.Errorf("failed to execute %%test script: %v", err)
+		}
+
+		if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
+			// Write the base hash to the overlayfs merged directory
+			if err := writeOverlayBaseHash(stage.b.RootfsPath, overlayBaseHash); err != nil {
+				return fmt.Errorf("while writing overlay base hash: %w", err)
+			}
+
+			// Store the hash in JSONObjects for the SIF descriptor
+			hashJSON, err := json.Marshal(overlayBaseHash)
+			if err != nil {
+				return err
+			}
+			stage.b.JSONObjects[image.SIFDescOverlayBaseHash] = hashJSON
+
+			// Unmount overlayfs and switch to overlay parent directory
+			if overlayMount != nil {
+				overlayDir, err := TeardownOverlayMount(overlayMount)
+				if err != nil {
+					return fmt.Errorf("while tearing down overlay mount: %w", err)
+				}
+				stage.b.RootfsPath = overlayDir
+				overlayMount = nil
+			}
+
+			sylog.Infof("Built overlay image on top of base image with hash %s", overlayBaseHash)
 		}
 	}
 

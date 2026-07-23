@@ -22,6 +22,7 @@ var (
 	mounts            []string
 	homePath          string
 	overlayPath       []string
+	basePath          string
 	scratchPath       []string
 	workdirPath       string
 	cwdPath           string
@@ -159,6 +160,17 @@ var actionOverlayFlag = cmdline.Flag{
 	Usage:        "use an overlayFS image for persistent data storage or as read-only layer of container",
 	EnvKeys:      []string{"OVERLAY", "OVERLAYIMAGE"},
 	Tag:          "<path>",
+}
+
+// --basepath
+var actionBasePathFlag = cmdline.Flag{
+	ID:           "actionBasePathFlag",
+	Value:        &basePath,
+	DefaultValue: "",
+	Name:         "basepath",
+	Usage:        "colon-separated list of paths to search for the base image of an overlay-only image (built with 'apptainer build --overlay'), when it is used as the primary image",
+	EnvKeys:      []string{"BASEPATH"},
+	Tag:          "<path[:path...]>",
 }
 
 // -S|--scratch
@@ -952,6 +964,7 @@ func init() {
 		cmdManager.RegisterFlagForCmd(&actionNvCCLIFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&actionRocmFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&actionOverlayFlag, actionsInstanceCmd...)
+		cmdManager.RegisterFlagForCmd(&actionBasePathFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&commonPromptForPassphraseFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&commonPEMFlag, actionsInstanceCmd...)
 		cmdManager.RegisterFlagForCmd(&actionPidNamespaceFlag, actionsCmd...)
