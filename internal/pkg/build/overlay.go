@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"syscall"
 
@@ -18,217 +19,146 @@ import (
 	"github.com/apptainer/apptainer/pkg/sylog"
 )
 
-// overlayFileState records enough information about a rootfs entry to
-// detect whether it was added, removed, or modified between two snapshots
-// of a build's root filesystem.
-type overlayFileState struct {
-	mode  os.FileMode
-	size  int64
-	mtime int64
-	link  string
-	isDir bool
+// OverlayMount represents an overlayfs mount used for build --overlay.
+// It tracks the base, upper, work, and merged directories so they can be
+// cleaned up after the build completes.
+type OverlayMount struct {
+	BaseLower string // path to read-only base image rootfs
+	UpperDir  string // path to writable upper layer
+	WorkDir   string // overlayfs work directory
+	MergedDir string // path where overlayfs is mounted (the build rootfs)
 }
 
-// snapshotRootfs walks root and returns a map of relative path to state,
-// used later to compute which entries were added, changed, or removed by
-// the build process, for `apptainer build --overlay`.
-func snapshotRootfs(root string) (map[string]overlayFileState, error) {
-	snapshot := make(map[string]overlayFileState)
+// SetupOverlayMount sets up overlayfs for a build, with the base image as a
+// read-only lower layer and a writable upper layer for build changes.
+// Returns an OverlayMount structure to track the directories for cleanup.
+func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
+	// Check if running as root (user id 0)
+	currentUser, err := user.Current()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current user: %w", err)
+	}
+	if currentUser.Uid != "0" {
+		return nil, fmt.Errorf("'build --overlay' requires root privileges (current uid: %s)", currentUser.Uid)
+	}
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	// Create directories for overlay: parent -> lower (base), upper, work, merged
+	overlayParent, err := os.MkdirTemp(tmpDir, "overlay-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create overlay parent directory: %w", err)
+	}
+
+	baseLower := filepath.Join(overlayParent, "lower")
+	upperDir := filepath.Join(overlayParent, "upper")
+	workDir := filepath.Join(overlayParent, "work")
+	mergedDir := filepath.Join(overlayParent, "merged")
+
+	// Create directories
+	for _, dir := range []string{baseLower, upperDir, workDir, mergedDir} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			os.RemoveAll(overlayParent)
+			return nil, fmt.Errorf("failed to create %s: %w", dir, err)
+		}
+	}
+
+	// Move base image rootfs to lower directory
+	// This extracts all files from basePath into baseLower
+	if err := copyDirContents(basePath, baseLower); err != nil {
+		os.RemoveAll(overlayParent)
+		return nil, fmt.Errorf("failed to copy base image to lower layer: %w", err)
+	}
+
+	// Mount overlayfs: lower (base) is read-only, upper/work are writable
+	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", baseLower, upperDir, workDir)
+	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, options); err != nil {
+		os.RemoveAll(overlayParent)
+		return nil, fmt.Errorf("failed to mount overlayfs at %s: %w", mergedDir, err)
+	}
+
+	return &OverlayMount{
+		BaseLower: baseLower,
+		UpperDir:  upperDir,
+		WorkDir:   workDir,
+		MergedDir: mergedDir,
+	}, nil
+}
+
+// TeardownOverlayMount unmounts the overlayfs and returns the path to the upper
+// directory containing only the changes. The parent overlay directory is NOT
+// removed, allowing the upper directory contents to be used for the final image.
+func TeardownOverlayMount(om *OverlayMount) (string, error) {
+	if om == nil {
+		return "", fmt.Errorf("overlay mount is nil")
+	}
+
+	// Unmount the overlayfs
+	if err := syscall.Unmount(om.MergedDir, 0); err != nil {
+		return "", fmt.Errorf("failed to unmount overlayfs at %s: %w", om.MergedDir, err)
+	}
+
+	// Return the path to the upper directory (contains only the changes)
+	return om.UpperDir, nil
+}
+
+// copyDirContents recursively copies the contents of src to dst.
+// This is used to copy the base image into the lower layer of the overlay.
+func copyDirContents(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(root, path)
+
+		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
 		}
+
 		if rel == "." {
 			return nil
 		}
 
-		state := overlayFileState{
-			mode:  info.Mode(),
-			size:  info.Size(),
-			mtime: info.ModTime().UnixNano(),
-			isDir: info.IsDir(),
+		dstPath := filepath.Join(dst, rel)
+
+		if info.IsDir() {
+			return os.Mkdir(dstPath, info.Mode())
 		}
+
+		// Create parent directories if needed
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+			return err
+		}
+
 		if info.Mode()&os.ModeSymlink != 0 {
-			link, err := os.Readlink(path)
+			// Copy symlink
+			target, err := os.Readlink(path)
 			if err != nil {
 				return err
 			}
-			state.link = link
+			return os.Symlink(target, dstPath)
 		}
 
-		snapshot[rel] = state
-		return nil
+		// Copy regular file
+		in, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer in.Close()
+
+		out, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
+		if err != nil {
+			return err
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, in); err != nil {
+			return err
+		}
+		if err := out.Close(); err != nil {
+			return err
+		}
+
+		return os.Chtimes(dstPath, info.ModTime(), info.ModTime())
 	})
-	if err != nil {
-		return nil, fmt.Errorf("while walking %s: %w", root, err)
-	}
-
-	return snapshot, nil
-}
-
-// buildOverlayDiff compares the current content of root against base (a
-// snapshot taken with snapshotRootfs before the build ran), and populates
-// destDir with only the added or changed entries, plus whiteout character
-// devices (following the overlayfs convention: a character device with
-// major/minor 0/0) for entries that were removed.
-func buildOverlayDiff(root string, base map[string]overlayFileState, destDir string) error {
-	seen := make(map[string]bool, len(base))
-
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		seen[rel] = true
-
-		prev, existed := base[rel]
-		changed := !existed || overlayEntryChanged(path, prev, info)
-
-		dst := filepath.Join(destDir, rel)
-
-		if info.IsDir() {
-			if err := os.MkdirAll(dst, 0o700); err != nil {
-				return err
-			}
-			if changed {
-				return os.Chmod(dst, info.Mode().Perm())
-			}
-			return nil
-		}
-
-		if !changed {
-			return nil
-		}
-
-		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-			return err
-		}
-
-		return copyOverlayEntry(path, dst, info)
-	})
-	if err != nil {
-		return fmt.Errorf("while computing overlay diff of %s: %w", root, err)
-	}
-
-	// Anything present in the base snapshot, but no longer present in the
-	// final rootfs, must be recorded as a whiteout in the overlay.
-	for rel := range base {
-		if seen[rel] {
-			continue
-		}
-		// Skip entries whose parent was itself removed; the parent
-		// whiteout is sufficient.
-		if parentRemoved(rel, base, seen) {
-			continue
-		}
-		dst := filepath.Join(destDir, rel)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-			return err
-		}
-		if err := syscall.Mknod(dst, syscall.S_IFCHR|0o000, 0); err != nil {
-			return fmt.Errorf("while creating whiteout for %s: %w", rel, err)
-		}
-	}
-
-	return nil
-}
-
-// parentRemoved returns true if any parent directory of rel was itself
-// removed (i.e. is present in base but not in seen).
-func parentRemoved(rel string, base map[string]overlayFileState, seen map[string]bool) bool {
-	dir := filepath.Dir(rel)
-	for dir != "." && dir != "/" {
-		if _, existed := base[dir]; existed && !seen[dir] {
-			return true
-		}
-		dir = filepath.Dir(dir)
-	}
-	return false
-}
-
-func overlayEntryChanged(path string, prev overlayFileState, info os.FileInfo) bool {
-	if prev.isDir != info.IsDir() {
-		return true
-	}
-	if prev.mode != info.Mode() {
-		return true
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		target, err := os.Readlink(path)
-		if err != nil {
-			return true
-		}
-		return target != prev.link
-	}
-	if !info.IsDir() {
-		if prev.size != info.Size() {
-			return true
-		}
-		if prev.mtime != info.ModTime().UnixNano() {
-			return true
-		}
-	}
-	return false
-}
-
-// copyOverlayEntry copies a single non-directory entry (regular file,
-// symlink, or other special file) from src to dst, preserving mode and, for
-// regular files, modification time.
-func copyOverlayEntry(src, dst string, info os.FileInfo) error {
-	switch {
-	case info.Mode()&os.ModeSymlink != 0:
-		target, err := os.Readlink(src)
-		if err != nil {
-			return err
-		}
-		if err := os.RemoveAll(dst); err != nil {
-			return err
-		}
-		return os.Symlink(target, dst)
-	case info.Mode().IsRegular():
-		return copyRegularFile(src, dst, info)
-	default:
-		sylog.Debugf("Skipping special file %s in overlay diff", src)
-		return nil
-	}
-}
-
-func copyRegularFile(src, dst string, info os.FileInfo) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	if err := os.RemoveAll(dst); err != nil {
-		return err
-	}
-
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, info.Mode().Perm())
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-
-	return os.Chtimes(dst, info.ModTime(), info.ModTime())
 }
 
 // hashBaseImage computes a sha256 hash of the base image file, used to tag

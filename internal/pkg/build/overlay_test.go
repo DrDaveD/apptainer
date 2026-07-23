@@ -14,48 +14,6 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-func TestSnapshotAndBuildOverlayDiff(t *testing.T) {
-	root := t.TempDir()
-
-	mustWriteFile(t, filepath.Join(root, "etc", "basefile"), "base\n")
-	mustWriteFile(t, filepath.Join(root, "etc", "unchanged"), "same\n")
-	mustMkdirAll(t, filepath.Join(root, "opt"))
-
-	snapshot, err := snapshotRootfs(root)
-	assert.NilError(t, err)
-	assert.Assert(t, len(snapshot) > 0)
-
-	// Simulate the build's %post: remove basefile, add a new file/dir,
-	// leave "unchanged" alone.
-	assert.NilError(t, os.Remove(filepath.Join(root, "etc", "basefile")))
-	mustMkdirAll(t, filepath.Join(root, "opt", "newdir"))
-	mustWriteFile(t, filepath.Join(root, "opt", "newdir", "file"), "new\n")
-	mustWriteFile(t, filepath.Join(root, "etc", "overlayfile"), "overlay content\n")
-
-	destDir := t.TempDir()
-	assert.NilError(t, buildOverlayDiff(root, snapshot, destDir))
-
-	// Added file present in diff.
-	added, err := os.ReadFile(filepath.Join(destDir, "etc", "overlayfile"))
-	assert.NilError(t, err)
-	assert.Equal(t, string(added), "overlay content\n")
-
-	// New directory's new file present in diff.
-	newFile, err := os.ReadFile(filepath.Join(destDir, "opt", "newdir", "file"))
-	assert.NilError(t, err)
-	assert.Equal(t, string(newFile), "new\n")
-
-	// Unchanged file must not be present in the diff.
-	_, err = os.Stat(filepath.Join(destDir, "etc", "unchanged"))
-	assert.Assert(t, os.IsNotExist(err))
-
-	// Removed file must have a whiteout char device with major/minor 0/0.
-	whiteoutPath := filepath.Join(destDir, "etc", "basefile")
-	info, err := os.Lstat(whiteoutPath)
-	assert.NilError(t, err)
-	assert.Assert(t, info.Mode()&os.ModeCharDevice != 0, "expected whiteout to be a char device")
-}
-
 func TestHashBaseImage(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "base.sif")
@@ -84,9 +42,4 @@ func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	assert.NilError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 	assert.NilError(t, os.WriteFile(path, []byte(content), 0o644))
-}
-
-func mustMkdirAll(t *testing.T, path string) {
-	t.Helper()
-	assert.NilError(t, os.MkdirAll(path, 0o755))
 }
