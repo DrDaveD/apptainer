@@ -285,8 +285,17 @@ func (b *Build) Full(ctx context.Context) error {
 
 	oldumask := syscall.Umask(0o002)
 
-	var overlayBaseSnapshot map[string]overlayFileState
+	var overlayMount *OverlayMount
 	var overlayBaseHash string
+
+	// Ensure overlayfs is unmounted if an error occurs
+	defer func() {
+		if overlayMount != nil {
+			if _, err := TeardownOverlayMount(overlayMount); err != nil {
+				sylog.Errorf("Failed to unmount overlayfs: %v", err)
+			}
+		}
+	}()
 
 	// build each stage one after the other
 	for i, stage := range b.stages {
@@ -335,10 +344,15 @@ func (b *Build) Full(ctx context.Context) error {
 			}
 
 			if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
-				overlayBaseSnapshot, err = snapshotRootfs(stage.b.RootfsPath)
+				// Set up overlayfs with base image as lower layer
+				overlayMount, err = SetupOverlayMount(stage.b.RootfsPath, stage.b.TmpDir)
 				if err != nil {
-					return fmt.Errorf("while snapshotting base image for overlay build: %w", err)
+					return fmt.Errorf("while setting up overlay mount for build: %w", err)
 				}
+				// Update stage rootfs to point to the overlayfs merged directory
+				stage.b.RootfsPath = overlayMount.MergedDir
+
+				// Hash the base image for later use
 				overlayBaseHash, err = hashBaseImage(stage.b.Recipe.Header["from"])
 				if err != nil {
 					return fmt.Errorf("while hashing base image for overlay build: %w", err)
@@ -420,22 +434,28 @@ func (b *Build) Full(ctx context.Context) error {
 		}
 
 		if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
-			diffDir, err := os.MkdirTemp(stage.b.TmpDir, "overlay-diff-")
-			if err != nil {
-				return fmt.Errorf("while creating overlay diff directory: %w", err)
-			}
-			if err := buildOverlayDiff(stage.b.RootfsPath, overlayBaseSnapshot, diffDir); err != nil {
-				return fmt.Errorf("while computing overlay diff: %w", err)
-			}
-			if err := writeOverlayBaseHash(diffDir, overlayBaseHash); err != nil {
+			// Write the base hash to the overlayfs merged directory
+			if err := writeOverlayBaseHash(stage.b.RootfsPath, overlayBaseHash); err != nil {
 				return fmt.Errorf("while writing overlay base hash: %w", err)
 			}
+
+			// Store the hash in JSONObjects for the SIF descriptor
 			hashJSON, err := json.Marshal(overlayBaseHash)
 			if err != nil {
 				return err
 			}
 			stage.b.JSONObjects[image.SIFDescOverlayBaseHash] = hashJSON
-			stage.b.RootfsPath = diffDir
+
+			// Unmount overlayfs and switch to upper directory
+			if overlayMount != nil {
+				upperDir, err := TeardownOverlayMount(overlayMount)
+				if err != nil {
+					return fmt.Errorf("while tearing down overlay mount: %w", err)
+				}
+				stage.b.RootfsPath = upperDir
+				overlayMount = nil
+			}
+
 			sylog.Infof("Built overlay image on top of base image with hash %s", overlayBaseHash)
 		}
 	}
