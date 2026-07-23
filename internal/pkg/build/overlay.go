@@ -16,7 +16,6 @@ import (
 	"syscall"
 
 	"github.com/apptainer/apptainer/pkg/image"
-	"github.com/apptainer/apptainer/pkg/sylog"
 )
 
 // OverlayMount represents an overlayfs mount used for build --overlay.
