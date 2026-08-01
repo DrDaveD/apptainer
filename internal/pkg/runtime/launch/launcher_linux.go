@@ -540,7 +540,7 @@ func (l *Launcher) setTargetIDs(useSuid bool) (err error) {
 //
 // If image is not an overlay-only image, it is returned unchanged.
 func (l *Launcher) resolveOverlayBase(image string) (string, error) {
-	if strings.HasPrefix(image, "instance://") || strings.Contains(image, "://") {
+	if strings.Contains(image, "://") {
 		return image, nil
 	}
 

@@ -2,11 +2,15 @@
 //   Apptainer a Series of LF Projects LLC.
 //   For website terms of use, trademark policy, privacy policy and other
 //   project policies see https://lfprojects.org/policies
+// This software is licensed under a 3-clause BSD license. Please consult the
+// LICENSE.md file distributed with the sources of this project regarding your
+// rights to use or distribute this software.
 
 // Package basepath implements discovery of a base container image, given a
 // hash and a list of paths to search, as used by the `--basepath` action
 // option to locate the base image that an overlay-only image (built with
 // `apptainer build --overlay`) was built on top of.
+
 package basepath
 
 import (

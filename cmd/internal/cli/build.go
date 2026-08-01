@@ -363,7 +363,7 @@ var buildOverlayFlag = cmdline.Flag{
 	Value:        &buildArgs.overlay,
 	DefaultValue: false,
 	Name:         "overlay",
-	Usage:        "build an overlay-only SIF image, containing only the files added or changed compared to the 'Bootstrap: localimage' base, tagged with a hash of the base image so it can be located at runtime with '--basepath'/APPTAINER_BASEPATH",
+	Usage:        "build an overlay-only image, containing only the files added or changed compared to the base",
 	EnvKeys:      []string{"BUILD_OVERLAY"},
 }
 

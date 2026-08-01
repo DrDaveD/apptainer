@@ -272,11 +272,8 @@ func (b *Build) Full(ctx context.Context) error {
 	defer b.cleanUp()
 
 	if b.Conf.Opts.Overlay {
-		if b.Conf.Format != "sif" {
-			return fmt.Errorf("'--overlay' is only supported when building a SIF image")
-		}
 		if b.Conf.Opts.DataPartition {
-			return fmt.Errorf("'--overlay' cannot be used together with '--datapartition'")
+			return fmt.Errorf("'--overlay' cannot be used together with '--data'")
 		}
 		if bs := b.stages[len(b.stages)-1].b.Recipe.Header["bootstrap"]; bs != "localimage" {
 			return fmt.Errorf("'--overlay' currently requires 'Bootstrap: localimage', got %q", bs)
@@ -349,7 +346,7 @@ func (b *Build) Full(ctx context.Context) error {
 				if err != nil {
 					return fmt.Errorf("while setting up overlay mount for build: %w", err)
 				}
-				// Update stage rootfs to point to the overlayfs merged directory
+				// Point stage rootfs to the overlayfs merged directory
 				stage.b.RootfsPath = overlayMount.MergedDir
 
 				// Hash the base image for later use
@@ -446,7 +443,7 @@ func (b *Build) Full(ctx context.Context) error {
 			}
 			stage.b.JSONObjects[image.SIFDescOverlayBaseHash] = hashJSON
 
-			// Unmount overlayfs and switch to overlay parent directory
+			// Unmount overlayfs and switch rootfs to overlay parent directory
 			if overlayMount != nil {
 				overlayDir, err := TeardownOverlayMount(overlayMount)
 				if err != nil {

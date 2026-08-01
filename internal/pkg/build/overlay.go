@@ -2,6 +2,9 @@
 //   Apptainer a Series of LF Projects LLC.
 //   For website terms of use, trademark policy, privacy policy and other
 //   project policies see https://lfprojects.org/policies
+// This software is licensed under a 3-clause BSD license. Please consult the
+// LICENSE.md file distributed with the sources of this project regarding your
+// rights to use or distribute this software.
 
 package build
 
@@ -19,10 +22,8 @@ import (
 )
 
 // OverlayMount represents an overlayfs mount used for build --overlay.
-// It tracks the base, upper, work, and merged directories so they can be
-// cleaned up after the build completes.
+// It tracks the upper, work, and merged directories
 type OverlayMount struct {
-	BaseLower string // path to read-only base image rootfs
 	UpperDir  string // path to writable upper layer
 	WorkDir   string // overlayfs work directory
 	MergedDir string // path where overlayfs is mounted (the build rootfs)
@@ -41,8 +42,7 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 		return nil, fmt.Errorf("'build --overlay' requires root privileges (current uid: %s)", currentUser.Uid)
 	}
 
-	// Create directories for overlay: parent -> upper, work, merged
-	// basePath (the extracted base image) will be used directly as the lower layer
+	// Create directories for overlay: upper, work, merged
 	overlayParent, err := os.MkdirTemp(tmpDir, "overlay-")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create overlay parent directory: %w", err)
@@ -68,7 +68,6 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 	}
 
 	return &OverlayMount{
-		BaseLower: basePath,
 		UpperDir:  upperDir,
 		WorkDir:   workDir,
 		MergedDir: mergedDir,
@@ -78,7 +77,6 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 // TeardownOverlayMount unmounts the overlayfs and returns the path to the overlay parent
 // directory which contains both the upper and work subdirectories. This is the format
 // expected by the apptainer run/exec/shell --overlay option.
-// The parent overlay directory is NOT removed, allowing it to be used for the final image.
 func TeardownOverlayMount(om *OverlayMount) (string, error) {
 	if om == nil {
 		return "", fmt.Errorf("overlay mount is nil")
@@ -87,6 +85,11 @@ func TeardownOverlayMount(om *OverlayMount) (string, error) {
 	// Unmount the overlayfs
 	if err := syscall.Unmount(om.MergedDir, 0); err != nil {
 		return "", fmt.Errorf("failed to unmount overlayfs at %s: %w", om.MergedDir, err)
+	}
+
+	// Clean out the merged dir
+	if err := syscall.Rmdir(om.MergedDir); err != nil {
+		return "", fmt.Errorf("Removing %v did not succeed because: %v", om.MergedDir, err)
 	}
 
 	// Return the path to the overlay parent directory (contains both upper and work)
