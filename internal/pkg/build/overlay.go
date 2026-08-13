@@ -20,18 +20,21 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/apptainer/apptainer/internal/pkg/image/driver"
 	"github.com/apptainer/apptainer/pkg/image"
 	"github.com/apptainer/apptainer/pkg/inspect"
 	"github.com/apptainer/apptainer/pkg/sylog"
+	"github.com/apptainer/apptainer/pkg/util/apptainerconf"
 	"github.com/apptainer/sif/v2/pkg/sif"
 )
 
 // OverlayMount represents an overlayfs mount used for build --overlay.
 // It tracks the upper, work, and merged directories
 type OverlayMount struct {
-	UpperDir  string // path to writable upper layer
-	WorkDir   string // overlayfs work directory
-	MergedDir string // path where overlayfs is mounted (the build rootfs)
+	UpperDir  string       // path to writable upper layer
+	WorkDir   string       // overlayfs work directory
+	MergedDir string       // path where overlayfs is mounted (the build rootfs)
+	Driver    image.Driver // image driver for overlay mount (may be nil)
 }
 
 // SetupOverlayMount sets up overlayfs for a build, with the base image as a
@@ -65,17 +68,47 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 		}
 	}
 
-	// Mount overlayfs: basePath (base image) is used directly as lower layer, upper/work are writable
-	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", basePath, upperDir, workDir)
-	if err := syscall.Mount("overlay", mergedDir, "overlay", 0, options); err != nil {
+	// Mount overlayfs via image driver instead of using kernel overlayfs,
+	// because the latter can't do as much unprivileged.  In particular
+	// it quickly runs into a need for the redirect_dir option, and that
+	// is effectively a privileged option.
+	appfile := apptainerconf.GetCurrentConfig()
+	driver.InitImageDrivers(true, true, appfile, image.OverlayFeature)
+	drv := image.GetDriver(driver.DriverName)
+
+	if drv == nil {
 		os.RemoveAll(overlayParent)
-		return nil, fmt.Errorf("failed to mount overlayfs at %s: %w", mergedDir, err)
+		return nil, fmt.Errorf("image driver not available for overlay mounts")
+	}
+
+	if drv.Features()&image.OverlayFeature == 0 {
+		os.RemoveAll(overlayParent)
+		return nil, fmt.Errorf("overlay feature not supported by image driver")
+	}
+
+	if err := drv.Start(nil, 0, false); err != nil {
+		os.RemoveAll(overlayParent)
+		return nil, fmt.Errorf("failed to start image driver: %w", err)
+	}
+
+	options := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s", basePath, upperDir, workDir)
+	mountParams := &image.MountParams{
+		Target:     mergedDir,
+		Filesystem: "overlay",
+		FSOptions:  []string{options},
+	}
+
+	if err := drv.Mount(mountParams, nil); err != nil {
+		drv.Stop(mergedDir)
+		os.RemoveAll(overlayParent)
+		return nil, fmt.Errorf("failed to mount overlay via image driver: %w", err)
 	}
 
 	return &OverlayMount{
 		UpperDir:  upperDir,
 		WorkDir:   workDir,
 		MergedDir: mergedDir,
+		Driver:    drv,
 	}, nil
 }
 
@@ -87,9 +120,16 @@ func TeardownOverlayMount(om *OverlayMount) (string, error) {
 		return "", fmt.Errorf("overlay mount is nil")
 	}
 
-	// Unmount the overlayfs
-	if err := syscall.Unmount(om.MergedDir, 0); err != nil {
-		return "", fmt.Errorf("failed to unmount overlayfs at %s: %w", om.MergedDir, err)
+	if om.Driver != nil {
+		// Stop the image driver (handles unmounting via fuse-overlayfs)
+		if err := om.Driver.Stop(om.MergedDir); err != nil {
+			return "", fmt.Errorf("failed to stop image driver: %w", err)
+		}
+	} else {
+		// Fallback to direct unmount for backward compatibility
+		if err := syscall.Unmount(om.MergedDir, 0); err != nil {
+			return "", fmt.Errorf("failed to unmount overlayfs at %s: %w", om.MergedDir, err)
+		}
 	}
 
 	// Clean out the merged dir
