@@ -11,14 +11,19 @@ package build
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/apptainer/apptainer/pkg/image"
+	"github.com/apptainer/apptainer/pkg/inspect"
+	"github.com/apptainer/apptainer/pkg/sylog"
+	"github.com/apptainer/sif/v2/pkg/sif"
 )
 
 // OverlayMount represents an overlayfs mount used for build --overlay.
@@ -39,7 +44,7 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
 	}
 	if currentUser.Uid != "0" {
-		return nil, fmt.Errorf("'build --overlay' requires root privileges (current uid: %s)", currentUser.Uid)
+		return nil, fmt.Errorf("'build --overlay' requires root or fakeroot privileges (current uid: %s)", currentUser.Uid)
 	}
 
 	// Create directories for overlay: upper, work, merged
@@ -96,18 +101,8 @@ func TeardownOverlayMount(om *OverlayMount) (string, error) {
 	return filepath.Dir(om.UpperDir), nil
 }
 
-// hashBaseImage computes a sha256 hash of the base image file, used to tag
-// an overlay-only build so its base can be found at runtime with
-// `--basepath`/`APPTAINER_BASEPATH`.
-func hashBaseImage(path string) (string, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", err
-	}
-	if info.IsDir() {
-		return "", fmt.Errorf("'build --overlay' does not support a sandbox base image %q; the base must be a SIF file", path)
-	}
-
+// hashBaseImageFromFile computes a sha256 hash of the base image file content.
+func hashBaseImageFromFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -120,6 +115,74 @@ func hashBaseImage(path string) (string, error) {
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// getHashFromSIFLabels attempts to read the base digest hash from a SIF file's
+// inspect-metadata.json labels. Returns empty string if the label is not found
+// or if the file is not a valid SIF file.
+func getHashFromSIFLabels(path string) (string, error) {
+	f, err := sif.LoadContainerFromPath(path, sif.OptLoadWithFlag(os.O_RDONLY))
+	if err != nil {
+		return "", nil
+	}
+	defer f.UnloadContainer()
+
+	descs, err := f.GetDescriptors(sif.WithDataType(sif.DataGenericJSON))
+	if err != nil {
+		return "", nil
+	}
+
+	for _, desc := range descs {
+		if desc.Name() != image.SIFDescInspectMetadataJSON {
+			continue
+		}
+
+		metadata := new(inspect.Metadata)
+		if err := json.NewDecoder(desc.GetReader()).Decode(metadata); err != nil {
+			sylog.Debugf("Couldn't decode inspect-metadata.json: %v", err)
+			continue
+		}
+
+		// Check for "%" in the definition file because if no
+		// definition file is used Apptainer inserts a small default
+		// one with only "bootstrap" and "from".
+		if strings.Contains(metadata.Attributes.Deffile, "%") {
+			sylog.Debugf("Skipping using base digest stored in sif because deffile was used")
+			continue
+		}
+
+		if digest, ok := metadata.Attributes.Labels["org.opencontainers.image.base.digest"]; ok {
+			if strings.HasPrefix(digest, "sha256:") {
+				return strings.TrimPrefix(digest, "sha256:"), nil
+			}
+			sylog.Debugf("Skipping using base digest stored in sif because it did not begin with 'sha256'")
+		}
+		sylog.Debugf("Base digest not found in sif's inspect-metadata.json")
+	}
+
+	return "", nil
+}
+
+// hashBaseImage computes a sha256 hash of the base image file, used to tag
+// an overlay-only build so its base can be found at runtime with
+// `--basepath`/`APPTAINER_BASEPATH`.
+func hashBaseImage(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("'build --overlay' does not support a sandbox base image %q; the base must be a SIF file", path)
+	}
+
+	if hash, err := getHashFromSIFLabels(path); err != nil {
+		return "", err
+	} else if hash != "" {
+		sylog.Debugf("Using base digest %s from SIF labels", hash)
+		return hash, nil
+	}
+
+	return hashBaseImageFromFile(path)
 }
 
 // writeOverlayBaseHash writes the overlay-basehash marker file into rootfs,
