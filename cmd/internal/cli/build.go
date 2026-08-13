@@ -470,6 +470,9 @@ func preRun(cmd *cobra.Command, args []string) {
 	}
 	spec := args[len(args)-1]
 	isDeffile := fs.IsFile(spec) && !isImage(spec)
+	if buildArgs.overlay && !isDeffile {
+		sylog.Fatalf("--overlay requires a definition file so it cannot be used with %q", spec)
+	}
 	if buildArgs.fakeroot {
 		fakerootExec(isDeffile, false)
 	} else {
