@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/apptainer/apptainer/pkg/image"
 	"gotest.tools/v3/assert"
 )
 

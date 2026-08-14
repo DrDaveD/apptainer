@@ -10,7 +10,6 @@
 // hash and a list of paths to search, as used by the `--basepath` action
 // option to locate the base image that an overlay-only image (built with
 // `apptainer build --overlay`) was built on top of.
-
 package basepath
 
 import (

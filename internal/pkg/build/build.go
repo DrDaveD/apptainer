@@ -256,6 +256,8 @@ func haveBindFor(binds []string, destination string) bool {
 }
 
 // Full runs a standard build from start to finish.
+//
+//nolint:maintidx
 func (b *Build) Full(ctx context.Context) error {
 	sylog.Infof("Starting build...")
 

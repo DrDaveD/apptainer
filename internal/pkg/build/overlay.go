@@ -134,7 +134,7 @@ func TeardownOverlayMount(om *OverlayMount) (string, error) {
 
 	// Clean out the merged dir
 	if err := syscall.Rmdir(om.MergedDir); err != nil {
-		return "", fmt.Errorf("Removing %v did not succeed because: %v", om.MergedDir, err)
+		return "", fmt.Errorf("removing %v did not succeed because: %v", om.MergedDir, err)
 	}
 
 	// Return the path to the overlay parent directory (contains both upper and work)
