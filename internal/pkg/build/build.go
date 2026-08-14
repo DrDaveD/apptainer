@@ -12,7 +12,6 @@ package build
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -354,6 +353,9 @@ func (b *Build) Full(ctx context.Context) error {
 				if err != nil {
 					return fmt.Errorf("while hashing base image for overlay build: %w", err)
 				}
+
+				// Store in Options for label insertion
+				stage.b.Opts.OverlayBaseHash = overlayBaseHash
 			}
 		}
 
@@ -431,18 +433,6 @@ func (b *Build) Full(ctx context.Context) error {
 		}
 
 		if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
-			// Write the base hash to the overlayfs merged directory
-			if err := writeOverlayBaseHash(stage.b.RootfsPath, overlayBaseHash); err != nil {
-				return fmt.Errorf("while writing overlay base hash: %w", err)
-			}
-
-			// Store the hash in JSONObjects for the SIF descriptor
-			hashJSON, err := json.Marshal(overlayBaseHash)
-			if err != nil {
-				return err
-			}
-			stage.b.JSONObjects[image.SIFDescOverlayBaseHash] = hashJSON
-
 			// Unmount overlayfs and switch rootfs to overlay parent directory
 			if overlayMount != nil {
 				overlayDir, err := TeardownOverlayMount(overlayMount)
@@ -453,7 +443,7 @@ func (b *Build) Full(ctx context.Context) error {
 				overlayMount = nil
 			}
 
-			sylog.Infof("Built overlay image on top of base image with hash %s", overlayBaseHash)
+			sylog.Infof("Built overlay image on top of base image with hash %s", stage.b.Opts.OverlayBaseHash)
 		}
 	}
 

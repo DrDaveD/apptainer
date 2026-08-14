@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/apptainer/apptainer/pkg/image"
 )
@@ -45,7 +46,9 @@ func isImage(path string) bool {
 }
 
 // FindBaseImage searches the given list of paths for a base container image
-// corresponding to hash. Each entry of paths is checked in turn:
+// corresponding to hash.  If the hash is prefixed with a hash type followed
+// by a colon (e.g. "sha256:"), it is removed.  Then each path is checked in
+// turn:
 //   - if the entry itself is a SIF file or a sandbox directory, it is used
 //     directly, regardless of hash.
 //   - otherwise, if the entry is a directory, it is searched for either a
@@ -75,13 +78,18 @@ func FindBaseImage(hash string, paths []string) (string, error) {
 			continue
 		}
 
-		candidate := filepath.Join(p, hash)
+		// strip off any prefix with a colon
+		before, path, found := strings.Cut(hash, ":")
+		if !found {
+			path = before
+		}
+		candidate := filepath.Join(p, path)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
 
-		if len(hash) > 2 {
-			candidate = filepath.Join(p, hash[:2], hash)
+		if len(path) > 2 {
+			candidate = filepath.Join(p, path[:2], path)
 			if _, err := os.Stat(candidate); err == nil {
 				return candidate, nil
 			}

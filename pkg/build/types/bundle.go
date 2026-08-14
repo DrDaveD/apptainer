@@ -140,6 +140,8 @@ type Options struct {
 	// source) are included, tagged with a hash of the base image so that
 	// it can be located at runtime via `--basepath`/`APPTAINER_BASEPATH`.
 	Overlay bool
+	// OverlayBaseHash is the hash of the base image for overlay builds
+	OverlayBaseHash string
 }
 
 // NewEncryptedBundle creates an Encrypted Bundle environment.

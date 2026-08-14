@@ -154,7 +154,7 @@ func hashBaseImageFromFile(path string) (string, error) {
 		return "", err
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // getHashFromSIFLabels attempts to read the base digest hash from a SIF file's
@@ -193,9 +193,9 @@ func getHashFromSIFLabels(path string) (string, error) {
 
 		if digest, ok := metadata.Attributes.Labels["org.opencontainers.image.base.digest"]; ok {
 			if strings.HasPrefix(digest, "sha256:") {
-				return strings.TrimPrefix(digest, "sha256:"), nil
+				return digest, nil
 			}
-			sylog.Debugf("Skipping using base digest stored in sif because it did not begin with 'sha256'")
+			sylog.Debugf("Skipping using base digest stored in sif because it did not begin with 'sha256:'")
 		}
 		sylog.Debugf("Base digest not found in sif's inspect-metadata.json")
 	}
@@ -223,15 +223,4 @@ func hashBaseImage(path string) (string, error) {
 	}
 
 	return hashBaseImageFromFile(path)
-}
-
-// writeOverlayBaseHash writes the overlay-basehash marker file into rootfs,
-// so a sandbox produced from it (or the final squashed SIF) carries the
-// hash of the base image it was built on top of.
-func writeOverlayBaseHash(rootfs, hash string) error {
-	path := filepath.Join(rootfs, image.OverlayBaseHashFile)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, []byte(hash+"\n"), 0o644)
 }

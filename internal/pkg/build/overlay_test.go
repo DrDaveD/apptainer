@@ -30,17 +30,6 @@ func TestHashBaseImage(t *testing.T) {
 	assert.ErrorContains(t, err, "does not support a sandbox base image")
 }
 
-func TestWriteOverlayBaseHash(t *testing.T) {
-	rootfs := t.TempDir()
-	hash := "abc123"
-
-	assert.NilError(t, writeOverlayBaseHash(rootfs, hash))
-
-	content, err := os.ReadFile(filepath.Join(rootfs, image.OverlayBaseHashFile))
-	assert.NilError(t, err)
-	assert.Equal(t, string(content), hash+"\n")
-}
-
 func mustWriteFile(t *testing.T, path, content string) {
 	t.Helper()
 	assert.NilError(t, os.MkdirAll(filepath.Dir(path), 0o755))
