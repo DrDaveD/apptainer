@@ -23,7 +23,7 @@ func TestHashBaseImage(t *testing.T) {
 
 	hash, err := hashBaseImage(path)
 	assert.NilError(t, err)
-	assert.Equal(t, hash, "e2d30bf8186c9e6a2506891ec08a67d730700522756ef5cce23f00887402985b")
+	assert.Equal(t, hash, "sha256:e2d30bf8186c9e6a2506891ec08a67d730700522756ef5cce23f00887402985b")
 
 	_, err = hashBaseImage(dir)
 	assert.ErrorContains(t, err, "does not support a sandbox base image")
