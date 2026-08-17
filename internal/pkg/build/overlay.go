@@ -18,7 +18,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
-	"syscall"
 
 	"github.com/apptainer/apptainer/internal/pkg/image/driver"
 	"github.com/apptainer/apptainer/pkg/image"
@@ -112,33 +111,22 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 	}, nil
 }
 
-// TeardownOverlayMount unmounts the overlayfs and returns the path to the overlay parent
-// directory which contains both the upper and work subdirectories. This is the format
-// expected by the apptainer run/exec/shell --overlay option.
-func TeardownOverlayMount(om *OverlayMount) (string, error) {
+// TeardownOverlayMount unmounts the overlayfs
+func TeardownOverlayMount(om *OverlayMount) (error) {
 	if om == nil {
-		return "", fmt.Errorf("overlay mount is nil")
+		return fmt.Errorf("overlay mount is nil")
 	}
 
-	if om.Driver != nil {
-		// Stop the image driver (handles unmounting via fuse-overlayfs)
-		if err := om.Driver.Stop(om.MergedDir); err != nil {
-			return "", fmt.Errorf("failed to stop image driver: %w", err)
-		}
-	} else {
-		// Fallback to direct unmount for backward compatibility
-		if err := syscall.Unmount(om.MergedDir, 0); err != nil {
-			return "", fmt.Errorf("failed to unmount overlayfs at %s: %w", om.MergedDir, err)
-		}
+	if om.Driver == nil {
+		return fmt.Errorf("internal error -- TeardownOverlayMount called with no image driver")
 	}
 
-	// Clean out the merged dir
-	if err := syscall.Rmdir(om.MergedDir); err != nil {
-		return "", fmt.Errorf("removing %v did not succeed because: %v", om.MergedDir, err)
+	// Stop the image driver (handles unmounting via fuse-overlayfs)
+	if err := om.Driver.Stop(om.MergedDir); err != nil {
+		return fmt.Errorf("failed to stop image driver: %w", err)
 	}
 
-	// Return the path to the overlay parent directory (contains both upper and work)
-	return filepath.Dir(om.UpperDir), nil
+	return nil
 }
 
 // hashBaseImageFromFile computes a sha256 hash of the base image file content.

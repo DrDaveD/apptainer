@@ -284,16 +284,17 @@ func (b *Build) Full(ctx context.Context) error {
 	oldumask := syscall.Umask(0o002)
 
 	var overlayMount *OverlayMount
-	var overlayBaseHash string
 
 	// Ensure overlayfs is unmounted if an error occurs
 	defer func() {
 		if overlayMount != nil {
-			if _, err := TeardownOverlayMount(overlayMount); err != nil {
+			if err := TeardownOverlayMount(overlayMount); err != nil {
 				sylog.Errorf("Failed to unmount overlayfs: %v", err)
 			}
 		}
 	}()
+
+	lastStageIndex := len(b.stages) - 1
 
 	// build each stage one after the other
 	for i, stage := range b.stages {
@@ -302,7 +303,7 @@ func (b *Build) Full(ctx context.Context) error {
 		}
 
 		// only update last stage if specified
-		update := stage.b.Opts.Update && !stage.b.Opts.Force && i == len(b.stages)-1
+		update := stage.b.Opts.Update && !stage.b.Opts.Force && lastStageIndex == i
 		if update {
 			// updating, extract dest container to bundle
 			sylog.Infof("Building into existing container: %s", b.Conf.Dest)
@@ -341,7 +342,7 @@ func (b *Build) Full(ctx context.Context) error {
 				return fmt.Errorf("packer failed to pack: %v", err)
 			}
 
-			if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
+			if b.Conf.Opts.Overlay && lastStageIndex == i {
 				// Set up overlayfs with base image as lower layer
 				overlayMount, err = SetupOverlayMount(stage.b.RootfsPath, stage.b.TmpDir)
 				if err != nil {
@@ -349,9 +350,10 @@ func (b *Build) Full(ctx context.Context) error {
 				}
 				// Point stage rootfs to the overlayfs merged directory
 				stage.b.RootfsPath = overlayMount.MergedDir
+				stage.b.ReopenRootfs()
 
 				// Hash the base image for later use
-				overlayBaseHash, err = hashBaseImage(stage.b.Recipe.Header["from"])
+				overlayBaseHash, err := hashBaseImage(stage.b.Recipe.Header["from"])
 				if err != nil {
 					return fmt.Errorf("while hashing base image for overlay build: %w", err)
 				}
@@ -434,16 +436,20 @@ func (b *Build) Full(ctx context.Context) error {
 			return fmt.Errorf("failed to execute %%test script: %v", err)
 		}
 
-		if b.Conf.Opts.Overlay && i == len(b.stages)-1 {
-			// Unmount overlayfs and switch rootfs to overlay parent directory
-			if overlayMount != nil {
-				overlayDir, err := TeardownOverlayMount(overlayMount)
-				if err != nil {
-					return fmt.Errorf("while tearing down overlay mount: %w", err)
-				}
-				stage.b.RootfsPath = overlayDir
-				overlayMount = nil
+		if b.Conf.Opts.Overlay && lastStageIndex == i {
+			// Unmount overlayfs and switch rootfs to overlay directory
+			if overlayMount == nil {
+				return fmt.Errorf("internal error -- overlayMount is nil after building overlay")
 			}
+
+			// Move the path to save to the upper layer
+			stage.b.RootfsPath = overlayMount.UpperDir
+			stage.b.ReopenRootfs()
+			err := TeardownOverlayMount(overlayMount)
+			if err != nil {
+				return fmt.Errorf("while tearing down overlay mount: %w", err)
+			}
+			overlayMount = nil
 
 			sylog.Infof("Built overlay image on top of base image with hash %s", stage.b.Opts.OverlayBaseHash)
 		}
@@ -452,7 +458,7 @@ func (b *Build) Full(ctx context.Context) error {
 	syscall.Umask(oldumask)
 
 	sylog.Debugf("Calling assembler")
-	if err := b.stages[len(b.stages)-1].Assemble(b.Conf.Dest); err != nil {
+	if err := b.stages[lastStageIndex].Assemble(b.Conf.Dest); err != nil {
 		return err
 	}
 
