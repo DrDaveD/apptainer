@@ -18,6 +18,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/apptainer/apptainer/internal/pkg/image/driver"
 	"github.com/apptainer/apptainer/pkg/image"
@@ -112,7 +113,7 @@ func SetupOverlayMount(basePath, tmpDir string) (*OverlayMount, error) {
 }
 
 // TeardownOverlayMount unmounts the overlayfs
-func TeardownOverlayMount(om *OverlayMount) (error) {
+func TeardownOverlayMount(om *OverlayMount) error {
 	if om == nil {
 		return fmt.Errorf("overlay mount is nil")
 	}
@@ -121,7 +122,10 @@ func TeardownOverlayMount(om *OverlayMount) (error) {
 		return fmt.Errorf("internal error -- TeardownOverlayMount called with no image driver")
 	}
 
-	// Stop the image driver (handles unmounting via fuse-overlayfs)
+	// Unmount the overlay and stop the image driver
+	if err := syscall.Unmount(om.MergedDir, 0); err != nil {
+		sylog.Infof("Error when umounting %v, skipping: %v", om.MergedDir, err)
+	}
 	if err := om.Driver.Stop(om.MergedDir); err != nil {
 		return fmt.Errorf("failed to stop image driver: %w", err)
 	}
