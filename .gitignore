@@ -12,6 +12,7 @@ squashfs-tools-*
 *.pyc
 *.swp
 
+.codegraph
 .vscode
 .DS_store
 builddir/
