@@ -49,3 +49,15 @@ e2e-nvidia:
       set -ex
       nvidia-smi
       su ubuntu -c "E2E_NO_ISOLATION=1 ./scripts/e2e-test -v -run TestE2E/PAR/GPU"
+
+e2e-amd:
+  rules:
+    - if: $CI_SERVER_HOST == "gitlab.spack.io"
+  extends: .common-setup
+  tags: [userns-amd-gpu]
+  image: rocm/dev-ubuntu-24.04:6.4.3-complete
+  script:
+    - |
+      set -ex
+      rocminfo
+      su ubuntu -c "E2E_NO_ISOLATION=1 ./scripts/e2e-test -v -run TestE2E/PAR/GPU"
