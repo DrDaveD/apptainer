@@ -1433,18 +1433,11 @@ func (e *EngineOperations) loadOverlayImages(starterConfig *starter.Config, writ
 	images := make([]image.Image, 0)
 
 	for _, overlayImg := range e.EngineConfig.GetOverlayImage() {
-		writableOverlay := true
+		overlayPath, writableOverlay := parseOverlayImageSpec(overlayImg)
 
-		splitted := strings.SplitN(overlayImg, ":", 2)
-		if len(splitted) == 2 {
-			if splitted[1] == "ro" {
-				writableOverlay = false
-			}
-		}
-
-		img, err := e.loadImage(splitted[0], writableOverlay, userNS, elevated)
+		img, err := e.loadImage(overlayPath, writableOverlay, userNS, elevated)
 		if err != nil && !image.IsReadOnlyFilesystem(err) {
-			return nil, fmt.Errorf("failed to open overlay image %s: %s", splitted[0], err)
+			return nil, fmt.Errorf("failed to open overlay image %s: %s", overlayPath, err)
 		}
 		// Otherwise either err is nil or err is read-only filesystem.
 		// Note that img.Writable is always false for squashfs images.
@@ -1512,6 +1505,16 @@ func (e *EngineOperations) loadOverlayImages(starterConfig *starter.Config, writ
 	}
 
 	return images, nil
+}
+
+// parseOverlayImageSpec separates the optional read-only suffix from an
+// overlay image path. The suffix must be parsed from the end because image
+// paths can contain colons, for example ORAS cache paths containing sha256.
+func parseOverlayImageSpec(spec string) (path string, writable bool) {
+	if strings.HasSuffix(spec, ":ro") {
+		return strings.TrimSuffix(spec, ":ro"), false
+	}
+	return spec, true
 }
 
 // loadBindImages load data bind images.
